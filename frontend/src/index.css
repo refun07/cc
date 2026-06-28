@@ -1,0 +1,31 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 font-sans antialiased;
+}
+
+@layer base {
+  /* Editorial serif for marketing/section headings; sans for component titles (h3+). */
+  h1,
+  h2 {
+    font-family: theme("fontFamily.display");
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+  .auth-input {
+    @apply w-full bg-transparent py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400;
+  }
+}
