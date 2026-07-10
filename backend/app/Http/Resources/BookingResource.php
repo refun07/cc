@@ -16,6 +16,8 @@ class BookingResource extends JsonResource
                 'slug' => $this->centre?->slug,
                 'area' => $this->centre?->area,
             ],
+            'centre_floor_id' => $this->centre_floor_id,
+            'floor_name' => $this->floor?->name,
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
             'customer_email' => $this->customer_email,
@@ -50,6 +52,7 @@ class BookingResource extends JsonResource
             'cancellation_reason' => $this->cancellation_reason,
             'status' => $this->status,
             'notes' => $this->notes,
+            'attachments' => $this->attachments ?? [],
             'food_items' => $this->foodItems->map(fn ($f) => [
                 'menu_name' => $f->menu_name,
                 'quantity' => $f->quantity,

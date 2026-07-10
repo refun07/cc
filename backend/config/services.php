@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    // Document scanning (NID / ledger / invoice OCR). Gemini has a free tier and
+    // takes priority; Anthropic is used only if no Gemini key is set.
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.0-flash'),
+    ],
+
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
+    ],
+
 ];

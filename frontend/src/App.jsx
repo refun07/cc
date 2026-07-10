@@ -1,7 +1,9 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import Toaster from "./components/Toaster";
 import ConfirmDialog from "./components/ConfirmDialog";
+import { useLangStore } from "./store/langStore";
+import { applyAutoTranslate } from "./i18n/autoTranslate";
 
 const Layout = lazy(() => import("./components/Layout"));
 const OwnerAccounting = lazy(() => import("./pages/owner/OwnerAccounting"));
@@ -13,6 +15,7 @@ const CentreDetail = lazy(() => import("./pages/CentreDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const BookingSuccess = lazy(() => import("./pages/BookingSuccess"));
 const MyBookings = lazy(() => import("./pages/MyBookings"));
+const Profile = lazy(() => import("./pages/Profile"));
 const OwnerLayout = lazy(() => import("./pages/owner/OwnerLayout"));
 const OwnerDashboard = lazy(() => import("./pages/owner/OwnerDashboard"));
 const OwnerBookings = lazy(() => import("./pages/owner/OwnerBookings"));
@@ -28,9 +31,12 @@ const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminCentres = lazy(() => import("./pages/admin/AdminCentres"));
 const AdminBookings = lazy(() => import("./pages/admin/AdminBookings"));
+const AdminCalendar = lazy(() => import("./pages/admin/AdminCalendar"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminPayments = lazy(() => import("./pages/admin/AdminPayments"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminHomepage = lazy(() => import("./pages/admin/AdminHomepage"));
 const AdminSettlements = lazy(() => import("./pages/admin/AdminSettlements"));
 const PartnerLayout = lazy(() => import("./pages/partner/PartnerLayout"));
 const PartnerDashboard = lazy(() => import("./pages/partner/PartnerDashboard"));
@@ -38,6 +44,11 @@ const PartnerPickups = lazy(() => import("./pages/partner/PartnerPickups"));
 const PartnerImpact = lazy(() => import("./pages/partner/PartnerImpact"));
 
 export default function App() {
+  const lang = useLangStore((s) => s.lang);
+
+  // Whole-app auto-translation: re-apply whenever the language changes.
+  useEffect(() => { applyAutoTranslate(lang); }, [lang]);
+
   return (
     <>
     <Toaster />
@@ -52,6 +63,7 @@ export default function App() {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/booking/:bookingNo" element={<BookingSuccess />} />
         <Route path="/my-bookings" element={<MyBookings />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
 
       {/* Owner / Community Centre panel */}
@@ -75,10 +87,13 @@ export default function App() {
         <Route index element={<AdminDashboard />} />
         <Route path="centres" element={<AdminCentres />} />
         <Route path="bookings" element={<AdminBookings />} />
+        <Route path="calendar" element={<AdminCalendar />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="payments" element={<AdminPayments />} />
         <Route path="settlements" element={<AdminSettlements />} />
         <Route path="reports" element={<AdminReports />} />
+        <Route path="settings" element={<AdminSettings />} />
+        <Route path="homepage" element={<AdminHomepage />} />
       </Route>
 
       {/* Staff portal */}

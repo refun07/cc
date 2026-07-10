@@ -51,8 +51,23 @@ export default function BookingPreviewModal({
                   <MapPin className="h-3.5 w-3.5" /> {draft.centre.area}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <Row icon={CalendarDays} label="Date" value={draft.eventDate} />
-                  <Row icon={Clock} label="Session" value={sessionLabel(draft.sessionType)} />
+                  {draft.bookingDates?.length > 1 ? (
+                    <div className="col-span-2">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                        <CalendarDays className="h-3.5 w-3.5" /> Dates ({draft.bookingDates.length})
+                      </div>
+                      <div className="mt-1 space-y-0.5 font-semibold text-slate-900">
+                        {draft.bookingDates.map((d) => (
+                          <div key={d.date}>{d.date} · {sessionLabel(d.session_type)}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Row icon={CalendarDays} label="Date" value={draft.eventDate} />
+                      <Row icon={Clock} label="Session" value={sessionLabel(draft.sessionType)} />
+                    </>
+                  )}
                   <Row icon={Users} label="Guests" value={draft.guestCount} />
                   <Row icon={Tag} label="Event" value={draft.eventType || "—"} />
                   {draft.menuName && <Row icon={Utensils} label="Menu" value={draft.menuName} />}
@@ -60,14 +75,14 @@ export default function BookingPreviewModal({
               </div>
 
               {/* customer */}
-              <div className="mt-3 rounded-2xl border border-slate-200 p-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Booked by</div>
+              <div className="mt-3 rounded-2xl p-4 ring-1 ring-slate-200/70">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Booked by</div>
                 <div className="mt-1 font-semibold text-slate-900">{customer.name}</div>
                 <div className="text-sm text-slate-500">{customer.phone}{customer.email ? ` · ${customer.email}` : ""}</div>
               </div>
 
               {/* cost */}
-              <div className="mt-3 space-y-1.5 rounded-2xl border border-slate-200 p-4 text-sm">
+              <div className="mt-3 space-y-1.5 rounded-2xl p-4 ring-1 ring-slate-200/70 text-sm">
                 <Line label="Venue" value={q.venue_amount} />
                 <Line label="Food" value={q.food_amount} />
                 <Line label="Service charge" value={q.service_charge} />
@@ -103,7 +118,7 @@ export default function BookingPreviewModal({
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 active:scale-[0.99] disabled:opacity-60"
               >
                 <ShieldCheck className="h-4 w-4" />
-                {busy ? "Processing…" : `Confirm & pay ${taka(payNow)}`}
+                {busy ? "Processing…" : payNow > 0 ? `Confirm & pay ${taka(payNow)}` : "Confirm reservation"}
               </button>
             </div>
           </motion.div>
@@ -117,17 +132,17 @@ export default function BookingPreviewModal({
 function Row({ icon: Icon, label, value }) {
   return (
     <div>
-      <div className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-        <Icon className="h-3 w-3" /> {label}
+      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+        <Icon className="h-3.5 w-3.5" /> {label}
       </div>
-      <div className="font-medium text-slate-800">{value}</div>
+      <div className="mt-0.5 text-[15px] font-semibold text-slate-900">{value}</div>
     </div>
   );
 }
 function Line({ label, value }) {
   return (
-    <div className="flex justify-between text-slate-600">
-      <span>{label}</span><span>{taka(value)}</span>
+    <div className="flex justify-between text-slate-700">
+      <span className="font-medium">{label}</span><span className="font-semibold tabular-nums text-slate-900">{taka(value)}</span>
     </div>
   );
 }

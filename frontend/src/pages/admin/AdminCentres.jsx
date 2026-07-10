@@ -3,6 +3,7 @@ import { Star, Check, Ban, ExternalLink } from "lucide-react";
 import { adminCentres, adminSetCentreStatus } from "../../services/api";
 import { taka } from "../../lib/format";
 import { PageHead, Card, Table, Badge, Loading } from "./ui";
+import { toast } from "../../store/toastStore";
 
 export default function AdminCentres() {
   const [centres, setCentres] = useState(null);
@@ -16,6 +17,9 @@ export default function AdminCentres() {
     try {
       await adminSetCentreStatus(c.id, status);
       setCentres((list) => list.map((x) => (x.id === c.id ? { ...x, status, is_verified: status === "active" ? true : x.is_verified } : x)));
+      toast.success(`${c.name} ${status === "active" ? "approved & activated" : status === "suspended" ? "suspended" : "updated"}.`);
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Could not update centre.");
     } finally {
       setBusyId(null);
     }

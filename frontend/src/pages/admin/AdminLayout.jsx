@@ -3,21 +3,25 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Building2, CalendarCheck, Users, CreditCard,
   LogOut, Lock, Phone, ShieldCheck, ExternalLink, BarChart3,
-  HandCoins,
+  HandCoins, CalendarRange, SlidersHorizontal, LayoutTemplate,
 } from "lucide-react";
 import { loginAccount } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import logo from "../../assets/dscc_3.jpg";
 import NotificationBell from "../../components/NotificationBell";
+import LanguageSwitcher from "../../components/LanguageSwitcher";
 
 const NAV = [
   ["/admin", "Dashboard", LayoutDashboard, true],
   ["/admin/centres", "Centres", Building2],
   ["/admin/bookings", "Bookings", CalendarCheck],
+  ["/admin/calendar", "Calendar", CalendarRange],
   ["/admin/users", "Users", Users],
   ["/admin/payments", "Payments", CreditCard],
   ["/admin/settlements", "Settlements", HandCoins],
   ["/admin/reports", "Reports", BarChart3],
+  ["/admin/homepage", "Home page", LayoutTemplate],
+  ["/admin/settings", "Payroll rules", SlidersHorizontal],
 ];
 
 export default function AdminLayout() {
@@ -74,6 +78,7 @@ export default function AdminLayout() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3">
+            <LanguageSwitcher tone="dark" />
             <NotificationBell dark={false} />
             <div className="text-right">
               <div className="text-sm font-semibold text-slate-900">{user.name}</div>

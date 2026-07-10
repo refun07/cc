@@ -14,7 +14,7 @@ class PublicCentreController extends Controller
     {
         $query = CommunityCentre::query()
             ->where('status', 'active')
-            ->with('facilities');
+            ->with('facilities', 'images');
 
         if ($area = $request->query('area')) {
             $query->where('area', 'like', "%{$area}%");
@@ -51,7 +51,7 @@ class PublicCentreController extends Controller
 
     public function show(CommunityCentre $centre)
     {
-        $centre->load('images', 'facilities', 'foodMenus');
+        $centre->load('images', 'facilities', 'foodMenus', 'floors');
 
         return new CentreDetailResource($centre);
     }
@@ -59,6 +59,7 @@ class PublicCentreController extends Controller
     public function availability(Request $request, CommunityCentre $centre)
     {
         $slots = $centre->availabilitySlots()
+            ->where('centre_floor_id', $request->query('floor_id') ?: null)
             ->when($request->query('from'), fn ($q, $from) => $q->whereDate('date', '>=', $from))
             ->when($request->query('to'), fn ($q, $to) => $q->whereDate('date', '<=', $to))
             ->get()
@@ -81,6 +82,7 @@ class PublicCentreController extends Controller
         $to = $request->query('to', now()->addDays(60)->format('Y-m-d'));
 
         $slots = $centre->availabilitySlots()
+            ->where('centre_floor_id', $request->query('floor_id') ?: null)
             ->whereBetween('date', [$from, $to])
             ->get()
             ->groupBy(fn ($s) => $s->date->format('Y-m-d'));

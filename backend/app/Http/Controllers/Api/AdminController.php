@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\BookingResource;
+use App\Models\AppSetting;
 use App\Models\Booking;
 use App\Models\CommunityCentre;
 use App\Models\Payment;
 use App\Models\Settlement;
 use App\Models\User;
 use App\Services\SettlementService;
+use App\Support\HomepageContent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -217,6 +219,7 @@ class AdminController extends Controller
     {
         $data = $request->validate([
             'centre_slug' => ['required', 'exists:community_centres,slug'],
+            'centre_floor_id' => ['nullable', 'integer', 'exists:centre_floors,id'],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_phone' => ['required', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email'],
@@ -374,11 +377,85 @@ class AdminController extends Controller
                 'method' => $p->payment_method,
                 'transaction_id' => $p->transaction_id,
                 'amount' => (float) $p->amount,
+                'vat_amount' => (float) ($p->booking?->vat_amount ?? 0),
+                'commission' => (float) ($p->booking?->service_charge ?? 0),
                 'refunded_amount' => (float) $p->refunded_amount,
                 'status' => $p->status,
                 'paid_at' => $p->paid_at?->toDateTimeString(),
             ]);
 
         return response()->json(['data' => $payments]);
+    }
+
+    /** Global HR / payroll rules configurable by admin. */
+    // ---- Home page content (public marketing copy) ----
+
+    public function homepage()
+    {
+        return response()->json(['data' => HomepageContent::get()]);
+    }
+
+    public function updateHomepage(Request $request)
+    {
+        $data = $request->validate([
+            'hero' => ['required', 'array'],
+            'hero.badge' => ['nullable', 'string', 'max:255'],
+            'hero.title_lead' => ['required', 'string', 'max:255'],
+            'hero.title_highlight' => ['nullable', 'string', 'max:255'],
+            'hero.subtitle' => ['nullable', 'string', 'max:1000'],
+            'hero.search_placeholder' => ['nullable', 'string', 'max:120'],
+            'hero.trust_badges' => ['nullable', 'array', 'max:4'],
+            'hero.trust_badges.*' => ['required', 'string', 'max:60'],
+
+            'stats' => ['nullable', 'array', 'max:6'],
+            'stats.*.label' => ['required', 'string', 'max:60'],
+            'stats.*.value' => ['required', 'numeric', 'min:0'],
+            'stats.*.suffix' => ['nullable', 'string', 'max:5'],
+            'stats.*.icon' => ['nullable', 'string', 'max:40'],
+
+            'features_heading' => ['nullable', 'string', 'max:160'],
+            'features_subheading' => ['nullable', 'string', 'max:255'],
+            'features' => ['nullable', 'array', 'max:9'],
+            'features.*.icon' => ['nullable', 'string', 'max:40'],
+            'features.*.title' => ['required', 'string', 'max:80'],
+            'features.*.description' => ['nullable', 'string', 'max:255'],
+
+            'steps_heading' => ['nullable', 'string', 'max:160'],
+            'steps' => ['nullable', 'array', 'max:6'],
+            'steps.*.title' => ['required', 'string', 'max:80'],
+            'steps.*.description' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        return response()->json(['data' => HomepageContent::put($data)]);
+    }
+
+    public function resetHomepage()
+    {
+        return response()->json(['data' => HomepageContent::reset()]);
+    }
+
+    public function settings()
+    {
+        return response()->json(['data' => [
+            'absence_deduction_rate' => (float) AppSetting::get('absence_deduction_rate', 1.0),
+            'late_penalty' => (float) AppSetting::get('late_penalty', 0),
+            'leave_deduction_rate' => (float) AppSetting::get('leave_deduction_rate', 0),
+            'late_cutoff' => AppSetting::get('late_cutoff', '10:00'),
+        ]]);
+    }
+
+    public function updateSettings(Request $request)
+    {
+        $data = $request->validate([
+            'absence_deduction_rate' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'late_penalty' => ['nullable', 'numeric', 'min:0'],
+            'leave_deduction_rate' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'late_cutoff' => ['nullable', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
+        ]);
+        foreach ($data as $key => $value) {
+            AppSetting::put($key, (string) $value);
+        }
+
+        return $this->settings();
     }
 }

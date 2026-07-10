@@ -15,6 +15,7 @@ class StoreBookingRequest extends FormRequest
     {
         return [
             'centre_slug' => ['required', 'string', 'exists:community_centres,slug'],
+            'centre_floor_id' => ['nullable', 'integer', 'exists:centre_floors,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email', 'max:255'],
@@ -26,7 +27,7 @@ class StoreBookingRequest extends FormRequest
             'food_selections' => ['nullable', 'array'],
             'food_selections.*.food_menu_id' => ['required', 'integer', 'distinct', 'exists:food_menus,id'],
             'food_selections.*.quantity' => ['nullable', 'integer', 'min:1'],
-            'payment_option' => ['nullable', 'in:full,advance'],
+            'payment_option' => ['nullable', 'in:full,advance,later'],
             'payment_method' => ['nullable', 'string', 'max:50'],
             'booking_dates' => ['nullable', 'array', 'min:1', 'max:30'],
             'booking_dates.*.date' => ['required', 'date', 'after_or_equal:today', 'distinct'],

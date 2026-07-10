@@ -19,6 +19,7 @@ class BookingController extends Controller
     {
         $data = $request->validate([
             'centre_slug' => ['required', 'exists:community_centres,slug'],
+            'centre_floor_id' => ['nullable', 'integer', 'exists:centre_floors,id'],
             'session_type' => ['required', 'in:full_day,half_day_morning,half_day_evening'],
             'guest_count' => ['required', 'integer', 'min:1'],
             'food_selections' => ['nullable', 'array'],
@@ -31,13 +32,18 @@ class BookingController extends Controller
         ]);
 
         $centre = CommunityCentre::where('slug', $data['centre_slug'])->firstOrFail();
+        // Preview only: a floor is optional here (the customer may not have picked one yet).
+        $floor = ! empty($data['centre_floor_id'])
+            ? $centre->activeFloors()->whereKey($data['centre_floor_id'])->first()
+            : null;
         $quote = $this->bookings->quote(
             $centre,
             $data['session_type'],
             (int) $data['guest_count'],
             $data['food_selections'] ?? [],
             (float) ($data['adjustment_amount'] ?? 0),
-            $data['booking_dates'] ?? []
+            $data['booking_dates'] ?? [],
+            $floor
         );
 
         return response()->json(['data' => $quote]);
@@ -89,8 +95,10 @@ class BookingController extends Controller
             ->with('payment', 'centre')
             ->firstOrFail();
 
-        if (in_array($booking->status, ['cancelled', 'completed', 'refunded'], true)) {
-            return response()->json(['message' => 'This booking can no longer be cancelled.'], 422);
+        // Once a centre or admin has confirmed (or fully paid) a booking, it is locked in
+        // and can no longer be self-cancelled by the customer.
+        if (in_array($booking->status, ['confirmed', 'paid', 'cancelled', 'completed', 'refunded'], true)) {
+            return response()->json(['message' => 'This booking is confirmed and can no longer be cancelled online. Please contact the centre.'], 422);
         }
 
         $booking = $this->bookings->cancelAndRefund(
@@ -100,6 +108,33 @@ class BookingController extends Controller
         );
 
         return new BookingResource($booking->load('foodItems', 'bookingDates', 'centre', 'payment'));
+    }
+
+    /**
+     * Let the booking owner amend their contact & event details before the event.
+     */
+    public function updateDetails(Request $request, string $bookingNo)
+    {
+        $data = $request->validate([
+            'customer_name' => ['required', 'string', 'max:255'],
+            'customer_phone' => ['required', 'string', 'max:30'],
+            'customer_email' => ['nullable', 'email', 'max:255'],
+            'guest_count' => ['nullable', 'integer', 'min:1'],
+            'event_type' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $booking = Booking::where('booking_no', $bookingNo)->firstOrFail();
+
+        if ($booking->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'You can only edit your own bookings.'], 403);
+        }
+        if (in_array($booking->status, ['cancelled', 'completed', 'refunded'], true)) {
+            return response()->json(['message' => 'This booking can no longer be edited.'], 422);
+        }
+
+        $booking->update(array_filter($data, fn ($v) => $v !== null));
+
+        return new BookingResource($booking->fresh()->load('foodItems', 'bookingDates', 'centre', 'payment'));
     }
 
     public function show(string $bookingNo)

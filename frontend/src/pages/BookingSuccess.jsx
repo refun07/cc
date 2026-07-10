@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getBooking, cancelBooking } from "../services/api";
+import { Wallet, CheckCircle2, Pencil } from "lucide-react";
+import { getBooking, cancelBooking, initiatePayment, updateBookingDetails } from "../services/api";
 import { taka, sessionLabel } from "../lib/format";
 import { toast } from "../store/toastStore";
+
+const PAY_METHODS = ["bKash", "Nagad", "Card", "Bank transfer", "Cash"];
 
 const STATUS_STYLES = {
   confirmed: "bg-emerald-100 text-emerald-700",
@@ -19,6 +22,12 @@ export default function BookingSuccess() {
   const [showCancel, setShowCancel] = useState(false);
   const [reason, setReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payMethod, setPayMethod] = useState(PAY_METHODS[0]);
+  const [paying, setPaying] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     getBooking(bookingNo).then(setBooking).catch(() => setNotFound(true));
@@ -45,7 +54,50 @@ export default function BookingSuccess() {
     }
   };
 
-  const canCancel = booking && !["cancelled", "completed", "refunded"].includes(booking.status);
+  const openEdit = () => {
+    setEditForm({
+      customer_name: booking.customer_name || "",
+      customer_phone: booking.customer_phone || "",
+      customer_email: booking.customer_email || "",
+      guest_count: booking.guest_count || "",
+      event_type: booking.event_type || "",
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      const updated = await updateBookingDetails(bookingNo, editForm);
+      setBooking(updated);
+      setEditOpen(false);
+      toast.success("Booking details updated.");
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Could not update details.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const doPayDue = async () => {
+    setPaying(true);
+    try {
+      const res = await initiatePayment({ booking_no: bookingNo, payment_method: payMethod, payment_option: "full" });
+      setBooking(res.data ?? res);
+      setPayOpen(false);
+      toast.success("Payment received. Your booking is now fully paid.");
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Payment could not be processed.");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // Once a booking is confirmed/paid by the centre or admin it is locked in and
+  // can no longer be self-cancelled by the customer.
+  const canCancel = booking && !["confirmed", "paid", "cancelled", "completed", "refunded"].includes(booking.status);
+  const canPayDue = booking && booking.due_amount > 0 && !["cancelled", "completed", "refunded"].includes(booking.status);
+  const canEdit = booking && !["cancelled", "completed", "refunded"].includes(booking.status);
 
   if (notFound) {
     return (
@@ -74,7 +126,7 @@ export default function BookingSuccess() {
       <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <div className="text-xs text-slate-400">Booking number</div>
+            <div className="text-xs font-medium text-slate-500">Booking number</div>
             <div className="text-xl font-extrabold text-slate-900">{booking.booking_no}</div>
           </div>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[booking.status] || "bg-slate-100 text-slate-600"}`}>
@@ -82,16 +134,48 @@ export default function BookingSuccess() {
           </span>
         </div>
 
-        <div className="mt-5 grid sm:grid-cols-2 gap-4 text-sm">
-          <Info label="Centre" value={booking.centre.name} />
-          <Info label="Area" value={booking.centre.area} />
-          <Info label="Event schedule" value={`${booking.date_count || 1} date${booking.date_count > 1 ? "s" : ""}`} />
-          <Info label="First session" value={sessionLabel(booking.session_type)} />
-          <Info label="Guests" value={booking.guest_count} />
-          <Info label="Event type" value={booking.event_type || "—"} />
-          <Info label="Customer" value={booking.customer_name} />
-          <Info label="Phone" value={booking.customer_phone} />
+        <div className="mt-5 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Booking details</div>
+          {canEdit && !editOpen && (
+            <button
+              onClick={openEdit}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit details
+            </button>
+          )}
         </div>
+
+        {editOpen ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <EditField label="Customer name" value={editForm.customer_name} onChange={(v) => setEditForm((f) => ({ ...f, customer_name: v }))} />
+              <EditField label="Phone" value={editForm.customer_phone} onChange={(v) => setEditForm((f) => ({ ...f, customer_phone: v }))} />
+              <EditField label="Email" value={editForm.customer_email} onChange={(v) => setEditForm((f) => ({ ...f, customer_email: v }))} />
+              <EditField label="Guests" type="number" value={editForm.guest_count} onChange={(v) => setEditForm((f) => ({ ...f, guest_count: v }))} />
+              <EditField label="Event type" value={editForm.event_type} onChange={(v) => setEditForm((f) => ({ ...f, event_type: v }))} />
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button onClick={saveEdit} disabled={savingEdit} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+                {savingEdit ? "Saving…" : "Save changes"}
+              </button>
+              <button onClick={() => setEditOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 grid sm:grid-cols-2 gap-4 text-sm">
+            <Info label="Centre" value={booking.centre.name} />
+            <Info label="Area" value={booking.centre.area} />
+            <Info label="Event schedule" value={`${booking.date_count || 1} date${booking.date_count > 1 ? "s" : ""}`} />
+            <Info label="First session" value={sessionLabel(booking.session_type)} />
+            <Info label="Guests" value={booking.guest_count} />
+            <Info label="Event type" value={booking.event_type || "—"} />
+            <Info label="Customer" value={booking.customer_name} />
+            <Info label="Phone" value={booking.customer_phone} />
+          </div>
+        )}
 
         {booking.booking_dates?.length > 0 && (
           <div className="mt-5 rounded-xl bg-slate-50 p-4">
@@ -157,6 +241,63 @@ export default function BookingSuccess() {
           </div>
         )}
 
+        {/* Pay remaining due */}
+        {canPayDue && (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-500 text-white">
+                  <Wallet className="h-5 w-5" />
+                </span>
+                <div>
+                  <div className="font-semibold text-slate-900">Outstanding balance</div>
+                  <div className="text-sm text-slate-500">Pay the remaining <span className="font-semibold text-amber-700">{taka(booking.due_amount)}</span> now or before the event.</div>
+                </div>
+              </div>
+              {!payOpen && (
+                <button
+                  onClick={() => setPayOpen(true)}
+                  className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                >
+                  Pay now
+                </button>
+              )}
+            </div>
+            {payOpen && (
+              <div className="mt-4 border-t border-amber-200 pt-4">
+                <div className="text-sm font-semibold text-slate-700">Choose a payment method</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {PAY_METHODS.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPayMethod(m)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${payMethod === m ? "bg-brand-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={doPayDue}
+                    disabled={paying}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {paying ? "Processing…" : `Pay ${taka(booking.due_amount)}`}
+                  </button>
+                  <button
+                    onClick={() => setPayOpen(false)}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Cancellation */}
         {canCancel && (
           <div className="mt-5 border-t border-slate-100 pt-4">
@@ -217,16 +358,29 @@ export default function BookingSuccess() {
 function Info({ label, value }) {
   return (
     <div>
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className="font-medium text-slate-800">{value}</div>
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className="mt-0.5 font-semibold text-slate-900">{value}</div>
     </div>
+  );
+}
+function EditField({ label, value, onChange, type = "text" }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="input mt-1 w-full"
+      />
+    </label>
   );
 }
 function Row({ label, value }) {
   return (
-    <div className="flex justify-between text-slate-600">
-      <span>{label}</span>
-      <span>{taka(value)}</span>
+    <div className="flex justify-between text-slate-700">
+      <span className="font-medium">{label}</span>
+      <span className="font-semibold tabular-nums text-slate-900">{taka(value)}</span>
     </div>
   );
 }

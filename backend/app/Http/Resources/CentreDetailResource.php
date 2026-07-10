@@ -33,6 +33,15 @@ class CentreDetailResource extends JsonResource
                 'name' => $f->name,
                 'icon' => $f->icon,
             ]),
+            // Empty means the venue is booked as a single unit (no floor choice).
+            'floors' => $this->floors->where('status', 'active')->values()->map(fn ($f) => [
+                'id' => $f->id,
+                'name' => $f->name,
+                'description' => $f->description,
+                'capacity' => (int) ($f->capacity ?: $this->capacity),
+                'half_day_price' => (float) ($f->half_day_price ?: $this->half_day_price),
+                'full_day_price' => (float) ($f->full_day_price ?: $this->full_day_price),
+            ]),
             'food_menus' => $this->foodMenus->where('status', 'active')->values()->map(fn ($m) => [
                 'id' => $m->id,
                 'name' => $m->name,

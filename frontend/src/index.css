@@ -28,4 +28,67 @@ body {
   .auth-input {
     @apply w-full bg-transparent py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400;
   }
+
+  /* Shimmer skeleton: a soft block with a light gradient sweeping across it. */
+  .skeleton {
+    @apply relative overflow-hidden bg-slate-200/80;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.65),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
 }
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
+/* Scanning sweep animation (OCR document scan) */
+@keyframes scanx {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(400%); }
+}
+
+/* Rich text: shared styles for the WYSIWYG editor and rendered descriptions. */
+.prose-editor h2, .rich-text h2 { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0.75rem 0 0.35rem; }
+.prose-editor h3, .rich-text h3 { font-size: 1rem;    font-weight: 700; color: #1e293b; margin: 0.65rem 0 0.3rem; }
+.prose-editor p,  .rich-text p  { margin: 0 0 0.6rem; }
+.prose-editor ul, .rich-text ul { list-style: disc;    padding-left: 1.35rem; margin: 0 0 0.6rem; }
+.prose-editor ol, .rich-text ol { list-style: decimal; padding-left: 1.35rem; margin: 0 0 0.6rem; }
+.prose-editor li, .rich-text li { margin: 0.15rem 0; }
+.prose-editor a,  .rich-text a  { color: #047857; text-decoration: underline; }
+.prose-editor blockquote, .rich-text blockquote {
+  border-left: 3px solid #d1d5db; padding-left: 0.85rem; color: #475569; font-style: italic; margin: 0 0 0.6rem;
+}
+.prose-editor > *:last-child, .rich-text > *:last-child { margin-bottom: 0; }
+
+/* Rich text media: images + YouTube embeds, sized by their width attribute. */
+.prose-editor img, .rich-text img { max-width: 100%; height: auto; border-radius: 0.6rem; margin: 0.5rem 0; display: block; }
+.prose-editor iframe, .rich-text iframe {
+  max-width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 0.6rem; margin: 0.5rem 0; display: block;
+}
+.prose-editor img[width="25%"], .rich-text img[width="25%"], .prose-editor iframe[width="25%"], .rich-text iframe[width="25%"] { width: 25%; }
+.prose-editor img[width="50%"], .rich-text img[width="50%"], .prose-editor iframe[width="50%"], .rich-text iframe[width="50%"] { width: 50%; }
+.prose-editor img[width="75%"], .rich-text img[width="75%"], .prose-editor iframe[width="75%"], .rich-text iframe[width="75%"] { width: 75%; }
+.prose-editor img[width="100%"], .rich-text img[width="100%"], .prose-editor iframe[width="100%"], .rich-text iframe[width="100%"] { width: 100%; }
+/* Make media clickable/selectable inside the editor. */
+.prose-editor img, .prose-editor iframe { cursor: pointer; }
+.prose-editor iframe { pointer-events: none; }          /* click selects, doesn't play */
+.prose-editor img:hover, .prose-editor iframe:hover { outline: 2px solid #6ee7b7; outline-offset: 2px; }

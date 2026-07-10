@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Lock, UserCircle2, LogIn } from "lucide-react";
+import { Lock, UserCircle2, LogIn, Eye } from "lucide-react";
 import { useBookingStore } from "../store/bookingStore";
 import { useAuthStore } from "../store/authStore";
 import { createBooking, initiatePayment } from "../services/api";
@@ -28,7 +28,6 @@ export default function Checkout() {
   const [form, setForm] = useState({ name: "", email: "" });
   const [method, setMethod] = useState("bKash");
   const [payOption, setPayOption] = useState("full"); // 'full' | 'advance'
-  const [agree, setAgree] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
@@ -52,18 +51,18 @@ export default function Checkout() {
 
   const q = draft.quote;
   const advance = q.advance_amount ?? Math.round(q.total_amount * 0.3);
-  const payNow = payOption === "advance" ? advance : q.total_amount;
-  const dueLater = payOption === "advance" ? q.total_amount - advance : 0;
+  const payNow = payOption === "later" ? 0 : payOption === "advance" ? advance : q.total_amount;
+  const dueLater = q.total_amount - payNow;
 
-  // Step 1: validate + open the preview (no money moves yet).
-  const review = (e) => {
-    e.preventDefault();
+  // Step 1: open the details popup (no money moves yet). The popup is the review step,
+  // so it must open BEFORE the "I have reviewed" confirmation — not after.
+  const openPreview = () => {
     setError("");
     if (!user) { setAuthOpen(true); return; }
     if (!form.name) { setError("Please enter your name."); return; }
-    if (!agree) { setError("Please confirm you have reviewed the booking."); return; }
     setPreviewOpen(true);
   };
+  const review = (e) => { e.preventDefault(); openPreview(); };
 
   // Step 2: actually create the booking + take payment.
   const confirmBooking = async () => {
@@ -72,21 +71,27 @@ export default function Checkout() {
     try {
       const booking = await createBooking({
         centre_slug: draft.centre.slug,
+        centre_floor_id: draft.floorId ?? undefined,
         customer_name: form.name,
         customer_email: form.email || null,
         event_date: draft.eventDate,
         session_type: draft.sessionType,
+        booking_dates: draft.bookingDates?.length ? draft.bookingDates : undefined,
         guest_count: draft.guestCount,
         event_type: draft.eventType,
         food_selections: draft.foodSelections,
         payment_option: payOption,
         payment_method: method,
       });
-      await initiatePayment({
-        booking_no: booking.booking_no,
-        payment_method: method,
-        payment_option: payOption,
-      });
+      // "Pay later" reserves the slot without moving any money — the customer
+      // settles the balance from their bookings page before the event.
+      if (payOption !== "later") {
+        await initiatePayment({
+          booking_no: booking.booking_no,
+          payment_method: method,
+          payment_option: payOption,
+        });
+      }
       clearDraft();
       nav(`/booking/${booking.booking_no}`);
     } catch (err) {
@@ -147,7 +152,7 @@ export default function Checkout() {
 
           {/* Payment option */}
           <Card title="How much to pay now">
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setPayOption("full")}
@@ -171,10 +176,23 @@ export default function Checkout() {
                 <div className="mt-2 font-extrabold text-brand-700">{taka(advance)}</div>
                 <div className="text-xs text-slate-400">Due later: {taka(q.total_amount - advance)}</div>
               </button>
+              <button
+                type="button"
+                onClick={() => setPayOption("later")}
+                className={`rounded-xl border p-4 text-left ${
+                  payOption === "later" ? "border-brand-500 bg-brand-50" : "border-slate-200"
+                }`}
+              >
+                <div className="font-semibold text-slate-900">Pay later</div>
+                <div className="text-sm text-slate-500">Reserve the slot, pay before the event.</div>
+                <div className="mt-2 font-extrabold text-brand-700">{taka(0)}</div>
+                <div className="text-xs text-slate-400">Due later: {taka(q.total_amount)}</div>
+              </button>
             </div>
           </Card>
 
           {/* Payment */}
+          {payOption !== "later" ? (
           <Card title="Payment method">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {PAYMENT_METHODS.map((p) => (
@@ -202,11 +220,19 @@ export default function Checkout() {
               Demo build: payment is simulated and instantly marked paid.
             </p>
           </Card>
+          ) : (
+          <Card title="Pay later">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-slate-600">
+              Your slot will be reserved with no payment now. You can pay the full
+              <span className="font-semibold text-amber-700"> {taka(q.total_amount)} </span>
+              anytime from your bookings page, before the event date.
+            </div>
+          </Card>
+          )}
 
-          <label className="flex items-start gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1" />
-            I have reviewed the booking summary and agree to the booking policies.
-          </label>
+          <p className="text-xs text-slate-400">
+            You'll see the full booking details in a popup to review and confirm before any payment is made.
+          </p>
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
@@ -217,13 +243,27 @@ export default function Checkout() {
 
         {/* Summary */}
         <div className="lg:sticky lg:top-20 h-fit">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200/70 shadow-[0_2px_10px_-4px_rgba(15,23,42,0.08)]">
             <h2 className="font-bold text-slate-900">Booking summary</h2>
             <div className="mt-3 text-sm space-y-1.5 text-slate-600">
               <SumRow label="Centre" value={draft.centre.name} />
+              {draft.floorName && <SumRow label="Floor" value={draft.floorName} />}
               <SumRow label="Area" value={draft.centre.area} />
-              <SumRow label="Date" value={draft.eventDate} />
-              <SumRow label="Session" value={sessionLabel(draft.sessionType)} />
+              {draft.bookingDates?.length > 1 ? (
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-400">Dates ({draft.bookingDates.length})</span>
+                  <span className="font-medium text-slate-700 text-right">
+                    {draft.bookingDates.map((d) => (
+                      <span key={d.date} className="block">{d.date} · {sessionLabel(d.session_type)}</span>
+                    ))}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <SumRow label="Date" value={draft.eventDate} />
+                  <SumRow label="Session" value={sessionLabel(draft.sessionType)} />
+                </>
+              )}
               <SumRow label="Guests" value={draft.guestCount} />
               <SumRow label="Event" value={draft.eventType} />
               {draft.menuName && <SumRow label="Menu" value={draft.menuName} />}
@@ -240,7 +280,7 @@ export default function Checkout() {
               <span>{taka(q.total_amount)}</span>
             </div>
             <div className="mt-1 flex justify-between text-sm">
-              <span className="text-slate-500">Paying now ({payOption === "advance" ? "advance" : "full"})</span>
+              <span className="text-slate-500">Paying now ({payOption === "advance" ? "advance" : payOption === "later" ? "pay later" : "full"})</span>
               <span className="font-extrabold text-brand-700">{taka(payNow)}</span>
             </div>
             {dueLater > 0 && (
@@ -251,10 +291,17 @@ export default function Checkout() {
             )}
 
             <button
-              disabled={submitting}
-              className="mt-5 w-full rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white transition hover:bg-brand-700 active:scale-[0.99] disabled:opacity-60"
+              type="button"
+              onClick={openPreview}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-100"
             >
-              {user ? `Review & pay ${taka(payNow)}` : "Sign in to continue"}
+              <Eye className="h-4 w-4" /> View booking details
+            </button>
+            <button
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white transition hover:bg-brand-700 active:scale-[0.99] disabled:opacity-60"
+            >
+              {!user ? "Sign in to continue" : payOption === "later" ? "Review & reserve slot" : `Review & pay ${taka(payNow)}`}
             </button>
             <Link to={`/centres/${draft.centre.slug}`} className="mt-2 block text-center text-xs text-slate-400">
               ← Edit booking
@@ -282,7 +329,7 @@ export default function Checkout() {
 
 function Card({ title, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200/70 shadow-[0_2px_10px_-4px_rgba(15,23,42,0.08)]">
       <h2 className="font-bold text-slate-900 mb-3">{title}</h2>
       {children}
     </div>

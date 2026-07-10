@@ -11,11 +11,17 @@ class Booking extends Model
     protected $casts = [
         'event_date' => 'date:Y-m-d',
         'cancelled_at' => 'datetime',
+        'attachments' => 'array',
     ];
 
     public function centre()
     {
         return $this->belongsTo(CommunityCentre::class, 'centre_id');
+    }
+
+    public function floor()
+    {
+        return $this->belongsTo(CentreFloor::class, 'centre_floor_id');
     }
 
     public function user()

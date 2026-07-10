@@ -69,6 +69,44 @@ class AuthController extends Controller
         return response()->json(['message' => 'Signed out.']);
     }
 
+    /** Update the signed-in account's own profile (name, phone, email). */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'regex:/^01[0-9]{9}$/', Rule::unique('users', 'phone')->ignore($user->id)],
+            'email' => ['nullable', 'email', 'max:255'],
+        ], [
+            'phone.regex' => 'Enter a valid Bangladeshi mobile number (e.g. 01XXXXXXXXX).',
+            'phone.unique' => 'Another account already uses this mobile number.',
+        ]);
+
+        $user->update($data);
+
+        return response()->json(['user' => $this->user($user->fresh())]);
+    }
+
+    /** Change the signed-in account's password. */
+    public function changePassword(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
+        ]);
+
+        if (! Hash::check($data['current_password'], $user->password)) {
+            return response()->json(['message' => 'Your current password is incorrect.'], 422);
+        }
+
+        $user->update(['password' => Hash::make($data['password'])]);
+
+        return response()->json(['message' => 'Password updated.']);
+    }
+
     protected function payload(User $user): array
     {
         return ['user' => $this->user($user), 'token' => $user->api_token];

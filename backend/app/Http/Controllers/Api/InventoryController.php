@@ -123,6 +123,51 @@ class InventoryController extends Controller
         return response()->json(['data'=>$purchaseOrder->fresh(['supplier','items.item'])]);
     }
 
+    public function updatePurchaseOrder(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        $this->own($request, $purchaseOrder);
+        abort_unless($purchaseOrder->status === 'draft', 422, 'Only draft purchase orders can be edited.');
+        $data = $request->validate([
+            'supplier_id'=>['required','integer'],'order_date'=>['required','date'],'expected_date'=>['nullable','date','after_or_equal:order_date'],
+            'discount_amount'=>['nullable','numeric','min:0'],'tax_amount'=>['nullable','numeric','min:0'],'notes'=>['nullable','string','max:2000'],
+            'lines'=>['required','array','min:1'],'lines.*.inventory_item_id'=>['required','integer','distinct'],
+            'lines.*.quantity'=>['required','numeric','gt:0'],'lines.*.unit_cost'=>['required','numeric','min:0'],
+        ]);
+        $centre = $this->primaryCentre($request);
+        $supplier = InventorySupplier::where('centre_id', $centre->id)->findOrFail($data['supplier_id']);
+        $itemIds = collect($data['lines'])->pluck('inventory_item_id');
+        abort_unless(InventoryItem::where('centre_id', $centre->id)->whereIn('id', $itemIds)->count() === $itemIds->count(), 422, 'One or more products do not belong to this centre.');
+
+        $po = DB::transaction(function () use ($data, $supplier, $purchaseOrder) {
+            $subtotal = collect($data['lines'])->sum(fn ($line) => round((float) $line['quantity'] * (float) $line['unit_cost'], 2));
+            $discount = (float) ($data['discount_amount'] ?? 0); $tax = (float) ($data['tax_amount'] ?? 0);
+            $purchaseOrder->update([
+                'supplier_id'=>$supplier->id,'order_date'=>$data['order_date'],'expected_date'=>$data['expected_date'] ?? null,
+                'subtotal'=>$subtotal,'discount_amount'=>$discount,'tax_amount'=>$tax,
+                'total_amount'=>max(round($subtotal-$discount+$tax,2),0),'notes'=>$data['notes'] ?? null,
+            ]);
+            $purchaseOrder->items()->delete();
+            foreach ($data['lines'] as $line) $purchaseOrder->items()->create([
+                'inventory_item_id'=>$line['inventory_item_id'],'ordered_quantity'=>$line['quantity'],
+                'unit_cost'=>$line['unit_cost'],'line_total'=>round((float)$line['quantity']*(float)$line['unit_cost'],2),
+            ]);
+            return $purchaseOrder->fresh(['supplier','items.item']);
+        });
+        return response()->json(['data'=>$po]);
+    }
+
+    public function deletePurchaseOrder(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        $this->own($request, $purchaseOrder);
+        abort_unless(in_array($purchaseOrder->status, ['draft', 'cancelled'], true), 422, 'Only draft or cancelled purchase orders can be deleted.');
+        abort_if($purchaseOrder->items()->where('received_quantity', '>', 0)->exists(), 422, 'Cannot delete a purchase order that has received stock.');
+        DB::transaction(function () use ($purchaseOrder) {
+            $purchaseOrder->items()->delete();
+            $purchaseOrder->delete();
+        });
+        return response()->json(['message' => 'Purchase order removed.']);
+    }
+
     public function receivePurchaseOrder(Request $request, PurchaseOrder $purchaseOrder)
     {
         $this->own($request,$purchaseOrder);
@@ -160,6 +205,53 @@ class InventoryController extends Controller
         $this->own($request, $damage);
         $data = $request->validate(['status' => ['required', 'in:disposed,recovered']]);
         return response()->json(['data' => $this->inventory->resolveDamage($damage, $data['status'], $request->user())]);
+    }
+
+    public function deleteDamage(Request $request, InventoryDamageReport $damage)
+    {
+        $this->own($request, $damage);
+        $this->inventory->deleteDamage($damage, $request->user());
+        return response()->json(['message' => 'Damage report removed.']);
+    }
+
+    // ---- Lots: ad-hoc add, correct, delete ----
+    public function storeLot(Request $request)
+    {
+        $data = $request->validate([
+            'inventory_item_id' => ['required', 'integer'], 'supplier_id' => ['nullable', 'integer'],
+            'received_quantity' => ['required', 'numeric', 'gt:0'], 'unit_cost' => ['nullable', 'numeric', 'min:0'],
+            'lot_no' => ['nullable', 'string', 'max:100'], 'manufactured_at' => ['nullable', 'date'], 'expires_at' => ['nullable', 'date'],
+        ]);
+        $centre = $this->primaryCentre($request);
+        abort_unless(InventoryItem::where('centre_id', $centre->id)->whereKey($data['inventory_item_id'])->exists(), 422, 'Product does not belong to this centre.');
+        if (! empty($data['supplier_id'])) abort_unless(InventorySupplier::where('centre_id', $centre->id)->whereKey($data['supplier_id'])->exists(), 422, 'Supplier does not belong to this centre.');
+        return response()->json(['data' => $this->inventory->createAdHocLot($data, $request->user())], 201);
+    }
+
+    public function updateLot(Request $request, InventoryLot $lot)
+    {
+        $this->own($request, $lot);
+        $data = $request->validate([
+            'available_quantity' => ['nullable', 'numeric', 'min:0'], 'lot_no' => ['nullable', 'string', 'max:100'],
+            'manufactured_at' => ['nullable', 'date'], 'expires_at' => ['nullable', 'date'],
+            'unit_cost' => ['nullable', 'numeric', 'min:0'], 'status' => ['nullable', 'in:active,depleted,quarantine,expired'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        return response()->json(['data' => $this->inventory->adjustLot($lot, $data, $request->user())]);
+    }
+
+    public function deleteLot(Request $request, InventoryLot $lot)
+    {
+        $this->own($request, $lot);
+        $this->inventory->deleteLot($lot, $request->user());
+        return response()->json(['message' => 'Lot removed.']);
+    }
+
+    public function deletePurchaseReturn(Request $request, PurchaseReturn $purchaseReturn)
+    {
+        $this->own($request, $purchaseReturn);
+        $this->inventory->deleteReturn($purchaseReturn, $request->user());
+        return response()->json(['message' => 'Purchase return reversed and removed.']);
     }
 
     public function storeStockCount(Request $request)
@@ -218,5 +310,16 @@ class InventoryController extends Controller
         abort_unless($stockCount->status === 'draft', 422, 'Only draft stock counts can be cancelled.');
         $stockCount->update(['status' => 'cancelled']);
         return response()->json(['data' => $stockCount]);
+    }
+
+    public function deleteStockCount(Request $request, InventoryStockCount $stockCount)
+    {
+        $this->own($request, $stockCount);
+        abort_if($stockCount->status === 'posted', 422, 'Posted stock counts are part of the audit trail and cannot be deleted.');
+        DB::transaction(function () use ($stockCount) {
+            $stockCount->lines()->delete();
+            $stockCount->delete();
+        });
+        return response()->json(['message' => 'Stock count removed.']);
     }
 }

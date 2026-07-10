@@ -4,7 +4,7 @@ import {
   Plus, ReceiptText, Trash2, UserRound, UtensilsCrossed, X,
 } from "lucide-react";
 import {
-  adminCreateBooking, getAvailability, getCentre, getCentres, ownerCentreMenus,
+  adminCreateBooking, getAvailability, getCentre, getCentres, ownerCentreMenus, ownerFloors,
   ownerCreateBooking, ownerProfile, quoteBooking,
 } from "../services/api";
 import { taka } from "../lib/format";
@@ -22,6 +22,7 @@ const newScheduleRow = (date = "", session_type = "full_day") => ({ key: crypto.
 
 const initialForm = (mode) => ({
   centre_slug: "",
+  centre_floor_id: "",
   customer_name: "",
   customer_phone: "",
   customer_email: "",
@@ -50,6 +51,7 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
   const [availability, setAvailability] = useState({});
   const [contextBusy, setContextBusy] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
   const [activeScheduleKey, setActiveScheduleKey] = useState(null);
 
   useEffect(() => {
@@ -64,12 +66,13 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
     setContextBusy(true);
 
     if (mode === "owner") {
-      Promise.all([ownerProfile(), ownerCentreMenus()])
-        .then(([centre, rows]) => {
+      Promise.all([ownerProfile(), ownerCentreMenus(), ownerFloors().catch(() => [])])
+        .then(([centre, rows, floorRows]) => {
           const active = rows.filter((item) => item.status === "active");
-          setSelectedCentre({ ...centre, food_menus: active });
+          const activeFloors = (floorRows || []).filter((f) => f.status === "active");
+          setSelectedCentre({ ...centre, food_menus: active, floors: activeFloors });
           setMenus(active);
-          setForm((current) => ({ ...current, centre_slug: centre.slug }));
+          setForm((current) => ({ ...current, centre_slug: centre.slug, centre_floor_id: activeFloors[0]?.id ?? "" }));
         })
         .catch(() => toast.error("Could not load centre booking options."))
         .finally(() => setContextBusy(false));
@@ -92,10 +95,16 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
         setSelectedCentre(centre);
         setMenus((centre.food_menus || []).filter((item) => item.status !== "inactive"));
         setFoods([]);
+        // Default to the venue's first floor (if it books by floor).
+        setForm((current) => ({ ...current, centre_floor_id: centre.floors?.[0]?.id ?? "" }));
       })
       .catch(() => { setSelectedCentre(null); setMenus([]); })
       .finally(() => setContextBusy(false));
   }, [open, mode, form.centre_slug]);
+
+  // A selected floor overrides the venue's capacity for validation and hints.
+  const selectedFloor = (selectedCentre?.floors || []).find((f) => String(f.id) === String(form.centre_floor_id)) || null;
+  const effCapacity = Number(selectedFloor?.capacity || selectedCentre?.capacity || 0);
 
   const adjustmentAmount = useMemo(() => {
     if (!form.has_adjustment || !form.adjustment_value) return 0;
@@ -123,6 +132,7 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
       setQuoteError("");
       quoteBooking({
         centre_slug: form.centre_slug,
+        centre_floor_id: form.centre_floor_id || undefined,
         session_type: validSchedule[0]?.session_type || "full_day",
         guest_count: Number(form.guest_count),
         food_selections: foodSelections,
@@ -134,13 +144,13 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
         .finally(() => setQuoteBusy(false));
     }, 250);
     return () => clearTimeout(timer);
-  }, [open, form.centre_slug, form.guest_count, foodSelections, adjustmentAmount, validSchedule]);
+  }, [open, form.centre_slug, form.centre_floor_id, form.guest_count, foodSelections, adjustmentAmount, validSchedule]);
 
   useEffect(() => {
     if (!open || !form.centre_slug || !validSchedule.length) { setAvailability({}); return; }
     const dates = validSchedule.map((row) => row.date).sort();
     setAvailability(Object.fromEntries(form.booking_dates.filter((row) => row.date).map((row) => [row.key, { loading: true }])));
-    getAvailability(form.centre_slug, { from: dates[0], to: dates[dates.length - 1] })
+    getAvailability(form.centre_slug, { from: dates[0], to: dates[dates.length - 1], floor_id: form.centre_floor_id || undefined })
       .then((slots) => {
         setAvailability(Object.fromEntries(form.booking_dates.filter((row) => row.date).map((row) => {
           const taken = (type) => slots.some((slot) => slot.date === row.date && slot.session_type === type && ["blocked", "booked"].includes(slot.status));
@@ -151,7 +161,7 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
         })));
       })
       .catch(() => setAvailability(Object.fromEntries(form.booking_dates.filter((row) => row.date).map((row) => [row.key, { available: null }]))));
-  }, [open, form.centre_slug, validSchedule, form.booking_dates]);
+  }, [open, form.centre_slug, form.centre_floor_id, validSchedule, form.booking_dates]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -177,7 +187,8 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
   const scheduleUnavailable = form.booking_dates.some((row) => availability[row.key]?.available === false);
   const scheduleChecking = form.booking_dates.some((row) => row.date && availability[row.key]?.loading);
   const activeSchedule = form.booking_dates.find((row) => row.key === activeScheduleKey) || form.booking_dates[0];
-  const canSubmit = !busy && !contextBusy && !!quote && !quoteBusy && scheduleComplete && !hasDuplicateDates && !scheduleUnavailable && !scheduleChecking && !customPaymentInvalid;
+  const floorMissing = !!selectedCentre?.floors?.length && !form.centre_floor_id;
+  const canSubmit = !busy && !contextBusy && !!quote && !quoteBusy && scheduleComplete && !hasDuplicateDates && !scheduleUnavailable && !scheduleChecking && !customPaymentInvalid && !floorMissing;
 
   const addFood = () => {
     const used = new Set(foods.map((row) => String(row.food_menu_id)));
@@ -206,16 +217,24 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
     setActiveScheduleKey(row.key);
   };
 
-  const submit = async (event) => {
+  // Step 1 — validate then show the preview (no booking is created yet).
+  const submit = (event) => {
     event.preventDefault();
+    if (!form.customer_name.trim()) return toast.error("Enter the customer name.");
+    if (!form.customer_phone.trim()) return toast.error("Enter the customer phone.");
     if (!scheduleComplete) return toast.error("Choose every booking date.");
     if (hasDuplicateDates) return toast.error("Each booking date must be unique.");
     if (scheduleUnavailable) return toast.error("One or more selected dates are not available.");
     if (customPaymentInvalid) return toast.error("Enter a custom payment between ৳1 and the booking total.");
     if (adjustmentAmount && !form.adjustment_reason.trim()) return toast.error("Add a reason for the manual adjustment.");
+    setPreview(true);
+  };
 
+  // Step 2 — actually create the booking after the preview is confirmed.
+  const doCreate = async () => {
     const payload = {
       centre_slug: form.centre_slug,
+      centre_floor_id: form.centre_floor_id || undefined,
       customer_name: form.customer_name.trim(),
       customer_phone: form.customer_phone.trim(),
       customer_email: form.customer_email.trim() || null,
@@ -242,12 +261,13 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
       onClose();
     } catch (error) {
       toast.error(apiError(error));
+      setPreview(false);
     } finally { setBusy(false); }
   };
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/65 p-2 backdrop-blur-sm sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-      <form onSubmit={submit} className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
+      <form onSubmit={submit} className="relative flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
         <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-6">
           <div>
             <h2 id="booking-modal-title" className="flex items-center gap-2 font-display text-xl font-bold text-slate-950 sm:text-2xl"><CalendarPlus className="h-6 w-6 text-brand-600" /> New booking</h2>
@@ -276,7 +296,14 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
               </Section>
 
               <Section icon={CalendarCheck2} title="Event schedule" action={<button type="button" onClick={addScheduleDate} disabled={form.booking_dates.length >= 30} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-brand-50 px-3 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-40"><Plus className="h-4 w-4" /> Add date</button>}>
-                <div className="col-span-full grid items-start gap-4 xl:grid-cols-[minmax(0,.85fr)_minmax(340px,1.15fr)]">
+                <div className="col-span-full grid items-start gap-4 xl:grid-cols-[minmax(340px,1.15fr)_minmax(0,.85fr)]">
+                  <AvailabilityCalendarPicker
+                    slug={form.centre_slug}
+                    value={activeSchedule?.date || ""}
+                    sessionType={activeSchedule?.session_type || "full_day"}
+                    selectedDates={form.booking_dates.map((row) => row.date)}
+                    onSelect={(date) => activeSchedule && updateSchedule(activeSchedule.key, "date", date)}
+                  />
                   <div className="space-y-2">
                   {form.booking_dates.map((row, index) => {
                     const status = availability[row.key];
@@ -299,15 +326,19 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
                     </div>;
                   })}
                   </div>
-                  <AvailabilityCalendarPicker
-                    slug={form.centre_slug}
-                    value={activeSchedule?.date || ""}
-                    sessionType={activeSchedule?.session_type || "full_day"}
-                    selectedDates={form.booking_dates.map((row) => row.date)}
-                    onSelect={(date) => activeSchedule && updateSchedule(activeSchedule.key, "date", date)}
-                  />
                 </div>
-                <Field label="Guests per date" required full><input type="number" className="input min-h-11" min="1" max={selectedCentre?.capacity || undefined} value={form.guest_count} onChange={set("guest_count")} required /><Help>{selectedCentre?.capacity ? `Venue capacity: ${Number(selectedCentre.capacity).toLocaleString()} guests. Catering quantities are charged for every selected date.` : "Enter the expected attendance for each date."}</Help></Field>
+                {!!selectedCentre?.floors?.length && (
+                  <Field label="Floor" required full>
+                    <select className="input min-h-11" value={form.centre_floor_id} onChange={set("centre_floor_id")} required>
+                      <option value="">Select a floor…</option>
+                      {selectedCentre.floors.map((f) => (
+                        <option key={f.id} value={f.id}>{f.name} — up to {f.capacity} guests · ৳{Number(f.full_day_price).toLocaleString()} full day</option>
+                      ))}
+                    </select>
+                    <Help>This venue books by floor. Each floor has its own capacity, pricing and availability.</Help>
+                  </Field>
+                )}
+                <Field label="Guests per date" required full><input type="number" className="input min-h-11" min="1" max={effCapacity || undefined} value={form.guest_count} onChange={set("guest_count")} required /><Help>{effCapacity ? `${selectedFloor ? `${selectedFloor.name} capacity` : "Venue capacity"}: ${Number(effCapacity).toLocaleString()} guests. Catering quantities are charged for every selected date.` : "Enter the expected attendance for each date."}</Help></Field>
               </Section>
 
               <Section icon={UtensilsCrossed} title="Catering" action={<button type="button" onClick={addFood} disabled={!menus.length || foods.length >= menus.length} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-brand-50 px-3 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"><Plus className="h-4 w-4" /> Add menu</button>}>
@@ -374,11 +405,70 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="text-sm text-slate-500"><span className="font-semibold text-slate-800">{quote ? taka(quote.total_amount) : "Pricing pending"}</span>{` · ${validSchedule.length || 1} date${(validSchedule.length || 1) > 1 ? "s" : ""}`}{form.payment_mode === "none" ? " · payment due later" : ` · collecting ${taka(paymentAmount)} now`}</div>
-          <div className="flex gap-2"><button type="button" onClick={onClose} disabled={busy} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:flex-none">Cancel</button><button disabled={!canSubmit} className="min-h-11 flex-1 rounded-xl bg-brand-600 px-6 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none">{busy ? "Creating…" : form.payment_mode === "none" ? "Create booking" : `Create & collect ${taka(paymentAmount)}`}</button></div>
+          <div className="flex gap-2"><button type="button" onClick={onClose} disabled={busy} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:flex-none">Cancel</button><button disabled={!canSubmit} className="min-h-11 flex-1 rounded-xl bg-brand-600 px-6 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none">Review booking</button></div>
         </footer>
+
+        {/* Preview / confirmation step */}
+        {preview && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) setPreview(false); }}>
+            <div className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div>
+                  <h3 className="font-display text-lg font-bold text-slate-900">Confirm new booking</h3>
+                  <p className="text-xs text-slate-500">Review the details before creating.</p>
+                </div>
+                <button type="button" onClick={() => setPreview(false)} disabled={busy} className="grid h-9 w-9 place-items-center rounded-full text-slate-400 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4 text-sm">
+                <PreviewRow label="Customer" value={form.customer_name} />
+                <PreviewRow label="Phone" value={form.customer_phone} />
+                {form.customer_email && <PreviewRow label="Email" value={form.customer_email} />}
+                {selectedFloor && <PreviewRow label="Floor" value={selectedFloor.name} />}
+                <PreviewRow label="Event" value={`${form.event_type || "—"} · ${form.guest_count} guests`} />
+
+                <div className="my-3 rounded-xl bg-slate-50 p-3">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule ({validSchedule.length || 1})</div>
+                  {(validSchedule.length ? validSchedule : form.booking_dates).map((d, i) => (
+                    <div key={i} className="flex justify-between py-0.5"><span className="font-semibold text-slate-700">{d.date || "—"}</span><span className="capitalize text-slate-500">{(d.session_type || "").replaceAll("_", " ") || "—"}</span></div>
+                  ))}
+                </div>
+
+                {quote && (
+                  <div className="space-y-1 rounded-xl border border-slate-200 p-3">
+                    <div className="flex justify-between text-slate-600"><span>Venue</span><span>{taka(quote.venue_amount)}</span></div>
+                    <div className="flex justify-between text-slate-600"><span>Catering</span><span>{taka(quote.food_amount)}</span></div>
+                    <div className="flex justify-between text-slate-600"><span>Service charge</span><span>{taka(quote.service_charge)}</span></div>
+                    <div className="flex justify-between text-slate-600"><span>VAT</span><span>{taka(quote.vat_amount)}</span></div>
+                    <div className="mt-1 flex justify-between border-t border-slate-100 pt-1 text-base font-extrabold text-slate-900"><span>Total</span><span>{taka(quote.total_amount)}</span></div>
+                  </div>
+                )}
+
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-brand-50 px-4 py-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">{form.payment_mode === "none" ? "Pay later" : `Collecting now · ${form.payment_method}`}</div>
+                    <div className="text-lg font-extrabold text-brand-800">{form.payment_mode === "none" ? "৳0" : taka(paymentAmount)}</div>
+                  </div>
+                  {form.payment_mode !== "none" && quote && paymentAmount < Number(quote.total_amount) && (
+                    <div className="text-right text-xs text-slate-500">Due later<div className="font-semibold text-amber-700">{taka(Number(quote.total_amount) - paymentAmount)}</div></div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-2 border-t border-slate-100 px-5 py-4">
+                <button type="button" onClick={() => setPreview(false)} disabled={busy} className="min-h-11 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Back</button>
+                <button type="button" onClick={doCreate} disabled={busy} className="min-h-11 flex-1 rounded-xl bg-brand-600 px-6 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">{busy ? "Creating…" : form.payment_mode === "none" ? "Confirm & create" : `Confirm & collect ${taka(paymentAmount)}`}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );
+}
+
+function PreviewRow({ label, value }) {
+  return <div className="flex justify-between border-b border-slate-50 py-1.5"><span className="text-slate-400">{label}</span><span className="font-semibold text-slate-800">{value}</span></div>;
 }
 
 function Section({ icon: Icon, title, action, children }) {

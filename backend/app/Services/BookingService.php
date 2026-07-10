@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AvailabilitySlot;
 use App\Models\Booking;
+use App\Models\CentreFloor;
 use App\Models\CommunityCentre;
 use App\Models\CrmContact;
 use App\Models\FoodMenu;
@@ -44,20 +45,28 @@ class BookingService
         int $guestCount,
         array $foodSelections,
         float $adjustmentAmount = 0,
-        array $bookingDates = []
+        array $bookingDates = [],
+        ?CentreFloor $floor = null
     ): array
     {
-        if ((int) $centre->capacity > 0 && $guestCount > (int) $centre->capacity) {
+        // A floor overrides the venue's capacity and pricing; falling back to the
+        // centre's values when the floor leaves them unset.
+        $capacity = (int) ($floor && $floor->capacity > 0 ? $floor->capacity : $centre->capacity);
+        $fullDayPrice = (float) ($floor && $floor->full_day_price > 0 ? $floor->full_day_price : $centre->full_day_price);
+        $halfDayPrice = (float) ($floor && $floor->half_day_price > 0 ? $floor->half_day_price : $centre->half_day_price);
+
+        if ($capacity > 0 && $guestCount > $capacity) {
+            $where = $floor ? $floor->name : 'This venue';
             throw ValidationException::withMessages([
-                'guest_count' => "This venue can host up to {$centre->capacity} guests.",
+                'guest_count' => "{$where} can host up to {$capacity} guests.",
             ]);
         }
 
         $schedule = count($bookingDates) ? $bookingDates : [['session_type' => $sessionType]];
         $dateCount = count($schedule);
         $venue = collect($schedule)->sum(fn ($row) => ($row['session_type'] ?? $sessionType) === 'full_day'
-            ? (float) $centre->full_day_price
-            : (float) $centre->half_day_price);
+            ? $fullDayPrice
+            : $halfDayPrice);
 
         $foodLines = [];
         $foodAmount = 0.0;
@@ -113,13 +122,15 @@ class BookingService
     public function create(CommunityCentre $centre, array $data): Booking
     {
         $schedule = $this->normalizeSchedule($data);
+        $floor = $this->resolveFloor($centre, $data['centre_floor_id'] ?? null);
         $quote = $this->quote(
             $centre,
             $schedule[0]['session_type'],
             (int) $data['guest_count'],
             $data['food_selections'] ?? [],
             (float) ($data['adjustment_amount'] ?? 0),
-            $schedule
+            $schedule,
+            $floor
         );
 
         if (abs((float) ($data['adjustment_amount'] ?? 0)) > 0 && blank($data['adjustment_reason'] ?? null)) {
@@ -128,15 +139,16 @@ class BookingService
             ]);
         }
 
-        return DB::transaction(function () use ($centre, $data, $quote, $schedule) {
+        return DB::transaction(function () use ($centre, $data, $quote, $schedule, $floor) {
             foreach ($schedule as $slot) {
-                $this->assertAvailable($centre->id, $slot['date'], $slot['session_type'], lock: true);
+                $this->assertAvailable($centre->id, $slot['date'], $slot['session_type'], lock: true, floorId: $floor?->id);
             }
 
             $booking = Booking::create([
-                'booking_no' => 'DSCC-'.strtoupper(Str::random(8)),
+                'booking_no' => (strtoupper($centre->booking_prefix ?: 'DSCC')).'-'.strtoupper(Str::random(8)),
                 'user_id' => $data['user_id'] ?? null,
                 'centre_id' => $centre->id,
+                'centre_floor_id' => $floor?->id,
                 'customer_name' => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'],
                 'customer_email' => $data['customer_email'] ?? null,
@@ -167,7 +179,7 @@ class BookingService
             $booking->bookingDates()->createMany($schedule);
 
             foreach ($schedule as $slot) {
-                $this->blockAvailability($centre->id, $slot['date'], $slot['session_type']);
+                $this->blockAvailability($centre->id, $slot['date'], $slot['session_type'], $floor?->id);
             }
 
             $contact = CrmContact::firstOrNew([
@@ -180,8 +192,34 @@ class BookingService
             $contact->stage = $contact->exists ? $contact->stage : 'customer';
             $contact->save();
 
-            return $booking->load('foodItems', 'bookingDates', 'centre');
+            return $booking->load('foodItems', 'bookingDates', 'centre', 'floor');
         });
+    }
+
+    /**
+     * Resolve the requested floor, enforcing that it belongs to this centre and
+     * that a floor is chosen whenever the centre has bookable floors.
+     */
+    public function resolveFloor(CommunityCentre $centre, $floorId): ?CentreFloor
+    {
+        $hasFloors = $centre->activeFloors()->exists();
+
+        if (! $floorId) {
+            if ($hasFloors) {
+                throw ValidationException::withMessages([
+                    'centre_floor_id' => 'This venue is booked by floor — please choose one.',
+                ]);
+            }
+            return null;
+        }
+
+        $floor = $centre->activeFloors()->whereKey($floorId)->first();
+        if (! $floor) {
+            throw ValidationException::withMessages([
+                'centre_floor_id' => 'That floor is not available at this venue.',
+            ]);
+        }
+        return $floor;
     }
 
     protected function normalizeSchedule(array $data): array
@@ -206,9 +244,11 @@ class BookingService
      * Is the given date+session bookable?
      * Full-day needs every session free; half-day needs its own session and full-day free.
      */
-    public function isAvailable(int $centreId, string $date, string $sessionType, bool $lock = false): bool
+    public function isAvailable(int $centreId, string $date, string $sessionType, bool $lock = false, ?int $floorId = null): bool
     {
-        $query = AvailabilitySlot::where('centre_id', $centreId)->whereDate('date', $date);
+        $query = AvailabilitySlot::where('centre_id', $centreId)
+            ->where('centre_floor_id', $floorId)   // null = whole-venue booking
+            ->whereDate('date', $date);
         if ($lock) {
             $query->lockForUpdate();
         }
@@ -226,9 +266,9 @@ class BookingService
         return ! $taken($sessionType) && ! $taken('full_day');
     }
 
-    protected function assertAvailable(int $centreId, string $date, string $sessionType, bool $lock = false): void
+    protected function assertAvailable(int $centreId, string $date, string $sessionType, bool $lock = false, ?int $floorId = null): void
     {
-        if (! $this->isAvailable($centreId, $date, $sessionType, $lock)) {
+        if (! $this->isAvailable($centreId, $date, $sessionType, $lock, $floorId)) {
             throw ValidationException::withMessages([
                 'event_date' => 'This date and session is no longer available. Please choose another slot.',
             ]);
@@ -315,10 +355,10 @@ class BookingService
 
             $schedule = $booking->bookingDates()->get();
             if ($schedule->isEmpty()) {
-                $this->releaseAvailability($booking->centre_id, $booking->event_date->format('Y-m-d'), $booking->session_type);
+                $this->releaseAvailability($booking->centre_id, $booking->event_date->format('Y-m-d'), $booking->session_type, $booking->centre_floor_id);
             } else {
                 foreach ($schedule as $slot) {
-                    $this->releaseAvailability($booking->centre_id, $slot->date->format('Y-m-d'), $slot->session_type);
+                    $this->releaseAvailability($booking->centre_id, $slot->date->format('Y-m-d'), $slot->session_type, $booking->centre_floor_id);
                 }
             }
 
@@ -326,29 +366,65 @@ class BookingService
         });
     }
 
+    /**
+     * Issue a standalone refund (full or partial) against a booking's paid amount
+     * without cancelling it. Adds to refunded_amount and reduces paid/due.
+     */
+    public function refund(Booking $booking, float $amount, ?string $reason = null): Booking
+    {
+        return DB::transaction(function () use ($booking, $amount, $reason) {
+            $refundable = round((float) $booking->paid_amount - (float) $booking->refunded_amount, 2);
+            $refund = min(round($amount, 2), max($refundable, 0));
+            abort_if($refund <= 0, 422, 'Nothing left to refund on this booking.');
+
+            $newPaid = round((float) $booking->paid_amount - $refund, 2);
+            $newRefunded = round((float) $booking->refunded_amount + $refund, 2);
+
+            if ($booking->payment) {
+                $booking->payment->update([
+                    'status' => 'refunded',
+                    'refunded_amount' => $newRefunded,
+                    'refunded_at' => now(),
+                    'gateway_response' => array_merge((array) $booking->payment->gateway_response, [
+                        'refund' => ['amount' => $refund, 'reason' => $reason, 'at' => now()->toDateTimeString()],
+                    ]),
+                ]);
+            }
+
+            $booking->update([
+                'paid_amount' => $newPaid,
+                'refunded_amount' => $newRefunded,
+                'due_amount' => max(round((float) $booking->total_amount - $newPaid, 2), 0),
+            ]);
+
+            return $booking->fresh(['payment', 'centre', 'foodItems', 'bookingDates']);
+        });
+    }
+
     /** Free the slots a booking was holding (used on cancellation). */
-    public function releaseAvailability(int $centreId, string $date, string $sessionType): void
+    public function releaseAvailability(int $centreId, string $date, string $sessionType, ?int $floorId = null): void
     {
         $sessions = $sessionType === 'full_day'
             ? ['full_day', 'half_day_morning', 'half_day_evening']
             : [$sessionType];
 
         AvailabilitySlot::where('centre_id', $centreId)
+            ->where('centre_floor_id', $floorId)
             ->whereDate('date', $date)
             ->whereIn('session_type', $sessions)
             ->where('status', 'booked')
             ->update(['status' => 'available']);
     }
 
-    protected function blockAvailability(int $centreId, string $date, string $sessionType): void
+    protected function blockAvailability(int $centreId, string $date, string $sessionType, ?int $floorId = null): void
     {
         $sessions = $sessionType === 'full_day'
             ? ['full_day', 'half_day_morning', 'half_day_evening']
             : [$sessionType];
 
         foreach ($sessions as $session) {
-            \App\Models\AvailabilitySlot::updateOrCreate(
-                ['centre_id' => $centreId, 'date' => $date, 'session_type' => $session],
+            AvailabilitySlot::updateOrCreate(
+                ['centre_id' => $centreId, 'centre_floor_id' => $floorId, 'date' => $date, 'session_type' => $session],
                 ['status' => 'booked']
             );
         }

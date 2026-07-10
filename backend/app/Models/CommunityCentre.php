@@ -27,6 +27,17 @@ class CommunityCentre extends Model
         return $this->hasMany(CentreImage::class, 'centre_id')->orderBy('sort_order');
     }
 
+    public function floors()
+    {
+        return $this->hasMany(CentreFloor::class, 'centre_id')->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Active, bookable floors. Empty means the venue is booked as a single unit. */
+    public function activeFloors()
+    {
+        return $this->floors()->where('status', 'active');
+    }
+
     public function facilities()
     {
         return $this->hasMany(CentreFacility::class, 'centre_id');

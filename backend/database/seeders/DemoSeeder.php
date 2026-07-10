@@ -8,8 +8,17 @@ use App\Models\CommunityCentre;
 use App\Models\CrmContact;
 use App\Models\Employee;
 use App\Models\Expense;
+use App\Models\InventoryDamageReport;
 use App\Models\InventoryItem;
+use App\Models\InventoryLot;
+use App\Models\InventoryStockCount;
+use App\Models\InventoryStockCountLine;
+use App\Models\InventorySupplier;
 use App\Models\Payment;
+use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
+use App\Models\PurchaseReturn;
+use App\Models\PurchaseReturnItem;
 use App\Models\User;
 use App\Models\WasteStream;
 use Illuminate\Database\Seeder;
@@ -62,11 +71,15 @@ class DemoSeeder extends Seeder
         foreach (CommunityCentre::orderBy('id')->take(3)->get() as $ci => $centre) {
             // Inventory
             foreach ($invPool as $it) {
+                $perishable = in_array($it[1], ['Food stock', 'Linen'], true);
                 InventoryItem::firstOrCreate(
                     ['centre_id' => $centre->id, 'name' => $it[0]],
-                    ['category' => $it[1], 'current_stock' => $it[2], 'minimum_stock' => $it[3], 'unit' => $it[4], 'condition' => 'good', 'status' => 'active', 'sku' => strtoupper(Str::random(6))]
+                    ['category' => $it[1], 'product_type' => $perishable ? 'perishable' : 'physical', 'current_stock' => $it[2], 'minimum_stock' => $it[3], 'unit' => $it[4], 'condition' => 'good', 'status' => 'active', 'sku' => strtoupper(Str::random(6))]
                 );
             }
+            // ---- Procurement: suppliers, POs, lots, returns, damage, stock counts ----
+            $this->seedProcurement($centre);
+
             // Staff + today attendance
             foreach ($staffPool as $si => $st) {
                 $emp = Employee::firstOrCreate(
@@ -158,5 +171,154 @@ class DemoSeeder extends Seeder
         }
 
         $this->command->info('Demo data seeded for 3 centres (inventory, staff, attendance, expenses, waste, bookings).');
+    }
+
+    /** Seed suppliers, purchase orders, lots, returns, damage reports and stock counts for a centre. */
+    private function seedProcurement(CommunityCentre $centre): void
+    {
+        if (PurchaseOrder::where('centre_id', $centre->id)->exists()) {
+            return; // already seeded
+        }
+
+        $suppliers = [
+            ['Meghna Furniture Ltd', 'Rakib Hasan', '01710000001', 'sales@meghnafurniture.com', 'Tejgaon I/A, Dhaka', '30 days'],
+            ['Bengal Electronics', 'Sadia Noor', '01710000002', 'info@bengalelectronics.com', 'Nawabpur Road, Dhaka', '15 days'],
+            ['FreshMart Catering Supplies', 'Kamal Uddin', '01710000003', 'order@freshmartbd.com', 'Karwan Bazar, Dhaka', 'Cash on delivery'],
+            ['DecoWorld BD', 'Nusrat Jahan', '01710000004', 'hello@decoworld.com.bd', 'Mirpur 10, Dhaka', '30 days'],
+        ];
+        $supplierModels = [];
+        foreach ($suppliers as $s) {
+            $supplierModels[] = InventorySupplier::create([
+                'centre_id' => $centre->id, 'name' => $s[0], 'contact_person' => $s[1],
+                'phone' => $s[2], 'email' => $s[3], 'address' => $s[4],
+                'tax_id' => 'BIN-'.rand(100000000, 999999999), 'payment_terms' => $s[5],
+                'status' => 'active', 'notes' => 'Preferred supplier.',
+            ]);
+        }
+
+        $items = InventoryItem::where('centre_id', $centre->id)->get();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        // Three purchase orders in different states: received, ordered, draft.
+        $poBlueprints = [
+            ['status' => 'received', 'days_ago' => 25, 'receive' => 1.0],
+            ['status' => 'partially_received', 'days_ago' => 10, 'receive' => 0.5],
+            ['status' => 'ordered', 'days_ago' => 4, 'receive' => 0.0],
+            ['status' => 'draft', 'days_ago' => 1, 'receive' => 0.0],
+        ];
+
+        $receivedLots = [];
+        foreach ($poBlueprints as $bp) {
+            $supplier = $supplierModels[array_rand($supplierModels)];
+            $lineItems = $items->random(min(3, $items->count()));
+            $orderDate = now()->subDays($bp['days_ago']);
+
+            $po = PurchaseOrder::create([
+                'po_no' => 'PO-'.strtoupper(Str::random(6)),
+                'centre_id' => $centre->id, 'supplier_id' => $supplier->id,
+                'order_date' => $orderDate->toDateString(),
+                'expected_date' => $orderDate->copy()->addDays(7)->toDateString(),
+                'status' => $bp['status'],
+                'discount_amount' => 0, 'tax_amount' => 0,
+                'notes' => 'Auto-seeded demo order.',
+                'created_by' => null,
+                'ordered_at' => in_array($bp['status'], ['ordered', 'partially_received', 'received']) ? $orderDate : null,
+                'received_at' => $bp['status'] === 'received' ? $orderDate->copy()->addDays(6) : null,
+            ]);
+
+            $subtotal = 0;
+            foreach ($lineItems as $item) {
+                $qty = rand(10, 60);
+                $cost = max(round(($item->average_cost ?: $item->purchase_price ?: rand(80, 900)), 2), 50);
+                $lineTotal = round($qty * $cost, 2);
+                $subtotal += $lineTotal;
+                $received = round($qty * $bp['receive'], 2);
+
+                $poItem = PurchaseOrderItem::create([
+                    'purchase_order_id' => $po->id, 'inventory_item_id' => $item->id,
+                    'ordered_quantity' => $qty, 'received_quantity' => $received,
+                    'returned_quantity' => 0, 'unit_cost' => $cost, 'line_total' => $lineTotal,
+                ]);
+
+                // Create a lot for received quantity.
+                if ($received > 0) {
+                    $lot = InventoryLot::create([
+                        'centre_id' => $centre->id, 'inventory_item_id' => $item->id,
+                        'supplier_id' => $supplier->id, 'purchase_order_item_id' => $poItem->id,
+                        'lot_no' => 'LOT-'.strtoupper(Str::random(6)),
+                        'manufactured_at' => $orderDate->copy()->subDays(rand(5, 30))->toDateString(),
+                        'expires_at' => in_array($item->category, ['Food stock', 'Linen'])
+                            ? now()->addDays(rand(-5, 90))->toDateString() : null,
+                        'received_quantity' => $received, 'available_quantity' => $received,
+                        'damaged_quantity' => 0, 'unit_cost' => $cost, 'status' => 'active',
+                    ]);
+                    $receivedLots[] = [$lot, $poItem, $item, $supplier, $po];
+                }
+            }
+
+            $po->update([
+                'subtotal' => $subtotal, 'total_amount' => $subtotal,
+            ]);
+        }
+
+        // A confirmed PO return against one received lot.
+        if (! empty($receivedLots)) {
+            [$lot, $poItem, $item, $supplier, $po] = $receivedLots[0];
+            $returnQty = max(round($lot->available_quantity * 0.15, 2), 1);
+            $return = PurchaseReturn::create([
+                'return_no' => 'RET-'.strtoupper(Str::random(6)),
+                'centre_id' => $centre->id, 'purchase_order_id' => $po->id, 'supplier_id' => $supplier->id,
+                'return_date' => now()->subDays(3)->toDateString(), 'status' => 'confirmed',
+                'total_amount' => round($returnQty * $lot->unit_cost, 2),
+                'reason' => 'Defective on arrival', 'notes' => 'Returned to supplier.', 'created_by' => null,
+            ]);
+            PurchaseReturnItem::create([
+                'purchase_return_id' => $return->id, 'purchase_order_item_id' => $poItem->id,
+                'inventory_item_id' => $item->id, 'inventory_lot_id' => $lot->id,
+                'quantity' => $returnQty, 'unit_cost' => $lot->unit_cost,
+                'line_total' => round($returnQty * $lot->unit_cost, 2),
+            ]);
+            $lot->update(['available_quantity' => max($lot->available_quantity - $returnQty, 0)]);
+            $poItem->update(['returned_quantity' => $returnQty]);
+        }
+
+        // A recorded damage report against another lot.
+        if (count($receivedLots) > 1) {
+            [$lot, , $item] = $receivedLots[1];
+            $dmgQty = max(round($lot->available_quantity * 0.1, 2), 1);
+            InventoryDamageReport::create([
+                'report_no' => 'DMG-'.strtoupper(Str::random(6)),
+                'centre_id' => $centre->id, 'inventory_item_id' => $item->id, 'inventory_lot_id' => $lot->id,
+                'quantity' => $dmgQty, 'reason' => 'Broken during event handling',
+                'notes' => 'Set aside for disposal review.', 'status' => 'recorded', 'created_by' => null,
+            ]);
+            $lot->update([
+                'available_quantity' => max($lot->available_quantity - $dmgQty, 0),
+                'damaged_quantity' => $lot->damaged_quantity + $dmgQty,
+            ]);
+        }
+
+        // One posted stock count and one draft stock count.
+        foreach ([['posted', 20], ['draft', 2]] as [$status, $daysAgo]) {
+            $count = InventoryStockCount::create([
+                'count_no' => 'SC-'.strtoupper(Str::random(6)),
+                'centre_id' => $centre->id, 'count_date' => now()->subDays($daysAgo)->toDateString(),
+                'status' => $status, 'notes' => 'Periodic physical count.',
+                'created_by' => null, 'posted_by' => null,
+                'posted_at' => $status === 'posted' ? now()->subDays($daysAgo) : null,
+            ]);
+            foreach ($items->random(min(4, $items->count())) as $item) {
+                $system = (float) $item->current_stock;
+                $counted = $status === 'posted' ? $system + rand(-3, 3) : $system;
+                InventoryStockCountLine::create([
+                    'inventory_stock_count_id' => $count->id, 'inventory_item_id' => $item->id,
+                    'inventory_lot_id' => null, 'system_quantity' => $system,
+                    'counted_quantity' => max($counted, 0), 'variance' => max($counted, 0) - $system,
+                    'unit_cost' => $item->average_cost ?: $item->purchase_price ?: 0,
+                ]);
+            }
+        }
     }
 }
