@@ -21,14 +21,20 @@ class AdminController extends Controller
     {
         $paidStatuses = ['paid', 'confirmed', 'completed'];
 
+        $monthExpression = match (DB::connection()->getDriverName()) {
+            'sqlite' => "strftime('%Y-%m', created_at)",
+            'pgsql' => "to_char(created_at, 'YYYY-MM')",
+            default => "DATE_FORMAT(created_at, '%Y-%m')",
+        };
+
         $gmv = (float) Booking::whereIn('status', $paidStatuses)->sum('total_amount');
         $vat = (float) Booking::whereIn('status', $paidStatuses)->sum('vat_amount');
         $commission = (float) Booking::whereIn('status', $paidStatuses)->sum('service_charge');
 
         // last 6 months booking trend
         $trend = Booking::query()
-            ->selectRaw("strftime('%Y-%m', created_at) as ym, count(*) as bookings, sum(total_amount) as revenue")
-            ->groupByRaw("strftime('%Y-%m', created_at)")
+            ->selectRaw("{$monthExpression} as ym, count(*) as bookings, sum(total_amount) as revenue")
+            ->groupByRaw($monthExpression)
             ->orderByRaw("ym desc")
             ->limit(6)
             ->get()

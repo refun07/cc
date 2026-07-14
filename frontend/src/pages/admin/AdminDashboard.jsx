@@ -15,7 +15,7 @@ export default function AdminDashboard() {
   useEffect(() => { adminDashboard().then(setData).catch(() => setData({ stats: {}, trend: [], recent_bookings: { data: [] } })); }, []);
 
   if (!data) return <Loading rows={4} />;
-  const s = data.stats;
+  const s = data.stats || {};
   const recent = data.recent_bookings?.data || data.recent_bookings || [];
 
   return (

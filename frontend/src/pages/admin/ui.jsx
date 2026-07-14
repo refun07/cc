@@ -29,6 +29,13 @@ export function StatCard({ icon: Icon, label, value, money, accent = "brand" }) 
     rose: "hover:ring-rose-100",
     emerald: "hover:ring-emerald-100",
   };
+  const numericValue = Number(value);
+  const displayValue = money
+    ? taka(Number.isFinite(numericValue) ? numericValue : 0)
+    : typeof value === "string" && !Number.isFinite(numericValue)
+      ? (/NaN|Infinity/i.test(value) ? "0" : value)
+      : (Number.isFinite(numericValue) ? numericValue : 0).toLocaleString("en-BD");
+
   return (
     <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 ${rings[accent]}`}>
       <div className="flex items-center justify-between">
@@ -36,7 +43,7 @@ export function StatCard({ icon: Icon, label, value, money, accent = "brand" }) 
         {Icon && <span className={`grid h-9 w-9 place-items-center rounded-lg ${colors[accent]}`}><Icon className="h-5 w-5" /></span>}
       </div>
       <div className="mt-3 text-2xl font-extrabold tabular-nums tracking-tight text-slate-900">
-        {money ? taka(value) : (typeof value === "string" && /[^\d.,-]/.test(value) ? value : Number(value).toLocaleString())}
+        {displayValue}
       </div>
     </div>
   );

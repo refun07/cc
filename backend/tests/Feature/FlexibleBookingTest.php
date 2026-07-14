@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CommunityCentre;
+use App\Models\CentreFloor;
 use App\Models\FoodMenu;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -107,6 +108,37 @@ class FlexibleBookingTest extends TestCase
             'booking_id' => $bookingId,
             'amount' => 25000,
             'payment_method' => 'Cash',
+        ]);
+    }
+
+    public function test_owner_booking_keeps_the_selected_floor(): void
+    {
+        $floor = CentreFloor::create([
+            'centre_id' => $this->centre->id,
+            'name' => 'Ground Floor Hall',
+            'capacity' => 300,
+            'half_day_price' => 25000,
+            'full_day_price' => 45000,
+            'status' => 'active',
+        ]);
+
+        $response = $this->withToken($this->owner->api_token)->postJson('/api/owner/bookings', [
+            'centre_floor_id' => $floor->id,
+            'customer_name' => 'Floor Booking Customer',
+            'customer_phone' => '01855555555',
+            'event_date' => now()->addDays(10)->toDateString(),
+            'session_type' => 'full_day',
+            'guest_count' => 100,
+            'mark_paid' => false,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.centre_floor_id', $floor->id)
+            ->assertJsonPath('data.floor_name', 'Ground Floor Hall');
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $response->json('data.id'),
+            'centre_floor_id' => $floor->id,
         ]);
     }
 

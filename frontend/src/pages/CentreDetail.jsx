@@ -5,6 +5,7 @@ import { useBookingStore } from "../store/bookingStore";
 import { taka, sessionLabel } from "../lib/format";
 import { facilityIcon } from "../lib/facilityIcons";
 import { sanitizeHtml } from "../lib/sanitizeHtml";
+import { clientKey } from "../lib/clientKey";
 import AvailabilityCalendarPicker from "../components/AvailabilityCalendarPicker";
 import Lightbox from "../components/Lightbox";
 import { Expand, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight, Play, ArrowUpRight } from "lucide-react";
@@ -24,7 +25,7 @@ const SESSIONS = [
   { value: "half_day_evening", label: "Half Day · Evening", note: "Evening session" },
 ];
 
-const newDateRow = (date = "", session_type = "full_day") => ({ key: crypto.randomUUID(), date, session_type });
+const newDateRow = (date = "", session_type = "full_day") => ({ key: clientKey(), date, session_type });
 const fmtDate = (v) => new Date(`${v}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
 
 export default function CentreDetail() {
@@ -129,7 +130,7 @@ export default function CentreDetail() {
       const d = new Date(`${[...taken].sort().pop()}T00:00:00`);
       do { d.setDate(d.getDate() + 1); next = d.toISOString().slice(0, 10); } while (taken.has(next));
     }
-    const row = newDateRow(next, bookingDates.at(-1)?.session_type || "full_day");
+    const row = newDateRow(next, bookingDates[bookingDates.length - 1]?.session_type || "full_day");
     setBookingDates((rows) => [...rows, row]);
     setActiveKey(row.key);
   };

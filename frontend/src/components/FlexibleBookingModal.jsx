@@ -8,6 +8,7 @@ import {
   ownerCreateBooking, ownerProfile, quoteBooking,
 } from "../services/api";
 import { taka } from "../lib/format";
+import { clientKey } from "../lib/clientKey";
 import { toast } from "../store/toastStore";
 import AvailabilityCalendarPicker from "./AvailabilityCalendarPicker";
 
@@ -18,7 +19,7 @@ const SESSIONS = [
 ];
 const METHODS = ["Cash", "bKash", "Nagad", "Bank Transfer", "Card", "SSLCommerz"];
 const EVENT_TYPES = ["Wedding", "Reception", "Corporate event", "Conference", "Seminar", "Birthday", "Community programme", "Other"];
-const newScheduleRow = (date = "", session_type = "full_day") => ({ key: crypto.randomUUID(), date, session_type });
+const newScheduleRow = (date = "", session_type = "full_day") => ({ key: clientKey(), date, session_type });
 
 const initialForm = (mode) => ({
   centre_slug: "",
@@ -194,7 +195,7 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
     const used = new Set(foods.map((row) => String(row.food_menu_id)));
     const first = menus.find((menu) => !used.has(String(menu.id)));
     if (!first) return toast.info("All active menus are already selected.");
-    setFoods((rows) => [...rows, { key: crypto.randomUUID(), food_menu_id: String(first.id), quantity: Number(form.guest_count) || 1 }]);
+    setFoods((rows) => [...rows, { key: clientKey(), food_menu_id: String(first.id), quantity: Number(form.guest_count) || 1 }]);
   };
   const updateFood = (key, field, value) => setFoods((rows) => rows.map((row) => row.key === key ? { ...row, [field]: value } : row));
   const updateSchedule = (key, field, value) => setForm((current) => ({ ...current, booking_dates: current.booking_dates.map((row) => row.key === key ? { ...row, [field]: value } : row) }));
@@ -212,7 +213,7 @@ export default function FlexibleBookingModal({ open, onClose, onCreated, mode })
       date.setDate(date.getDate() + 1);
       next = date.toISOString().slice(0, 10);
     }
-    const row = newScheduleRow(next, form.booking_dates.at(-1)?.session_type || "full_day");
+    const row = newScheduleRow(next, form.booking_dates[form.booking_dates.length - 1]?.session_type || "full_day");
     setForm((current) => ({ ...current, booking_dates: [...current.booking_dates, row] }));
     setActiveScheduleKey(row.key);
   };

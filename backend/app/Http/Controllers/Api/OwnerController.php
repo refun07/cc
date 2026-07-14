@@ -103,6 +103,7 @@ class OwnerController extends Controller
     public function storeBooking(Request $request)
     {
         $data = $request->validate([
+            'centre_floor_id' => ['nullable', 'integer', 'exists:centre_floors,id'],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_phone' => ['required', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email'],
