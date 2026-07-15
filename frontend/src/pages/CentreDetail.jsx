@@ -11,6 +11,7 @@ import Lightbox from "../components/Lightbox";
 import { Expand, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight, Play, ArrowUpRight } from "lucide-react";
 
 const FALLBACK_IMG = "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=70";
+const VIRTUAL_TOUR_URL = "https://fourcornersbd.com/360/bbq/";
 
 const EVENT_TYPES = [
   "Wedding", "Reception", "Holud / Mehendi", "Engagement", "Anniversary",
@@ -274,32 +275,31 @@ export default function CentreDetail() {
           </div>
 
           {/* Virtual tour */}
-          {centre.virtual_tour_url && (
-            <div className="relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-brand-900 p-5 shadow-lg shadow-slate-900/20 sm:p-6">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-brand-500/30 blur-3xl" />
-              <div className="relative flex items-center gap-4">
-                <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/10 text-white ring-1 ring-white/15">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-xl bg-brand-400/30" />
-                  <Play className="relative h-5 w-5 fill-white" />
-                </span>
-                <div>
-                  <div className="inline-flex items-center gap-2">
-                    <span className="font-bold text-white">Virtual Tour Available</span>
-                    <span className="rounded-full bg-brand-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-200 ring-1 ring-brand-400/30">360°</span>
-                  </div>
-                  <p className="mt-0.5 text-sm text-slate-300">Step inside and explore the venue before you book.</p>
+          <div className="relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-brand-900 p-5 shadow-lg shadow-slate-900/20 sm:p-6">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-brand-500/30 blur-3xl" />
+            <div className="relative flex items-center gap-4">
+              <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/10 text-white ring-1 ring-white/15">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-xl bg-brand-400/30 motion-reduce:animate-none" />
+                <Play className="relative h-5 w-5 fill-white" />
+              </span>
+              <div>
+                <div className="inline-flex items-center gap-2">
+                  <span className="font-bold text-white">Virtual Tour Available</span>
+                  <span className="rounded-full bg-brand-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-200 ring-1 ring-brand-400/30">360°</span>
                 </div>
+                <p className="mt-0.5 text-sm text-slate-300">Step inside and explore the venue before you book.</p>
               </div>
-              <a
-                href={centre.virtual_tour_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative inline-flex items-center gap-1.5 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:scale-[1.02] hover:shadow-md active:scale-95"
-              >
-                Open Virtual Tour <ArrowUpRight className="h-4 w-4" />
-              </a>
             </div>
-          )}
+            <a
+              href={VIRTUAL_TOUR_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open 360 degree virtual tour for ${centre.name}`}
+              className="relative inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:scale-[1.02] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-brand-900 active:scale-95 sm:w-auto"
+            >
+              Open Virtual Tour <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </div>
 
           {/* Facilities */}
           <Section title="Venue facilities">
