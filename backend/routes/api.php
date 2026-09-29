@@ -182,9 +182,11 @@ Route::middleware(['auth.token', 'role:admin'])->prefix('admin')->group(function
     Route::get('/centres', [AdminController::class, 'centres']);
     Route::patch('/centres/{centre:id}/status', [AdminController::class, 'updateCentreStatus']);
     Route::patch('/centres/{centre:id}/commission', [AdminController::class, 'updateCommissionRate']);
+    Route::post('/centres', [AdminController::class, 'storeCentre']);
     Route::get('/users', [AdminController::class, 'users']);
     Route::patch('/users/{user}/status', [AdminController::class, 'updateUserStatus']);
     Route::post('/users/{user}/impersonate', [AdminController::class, 'impersonate']);
+    Route::post('/users', [AdminController::class, 'storeUser']);
     Route::get('/bookings', [AdminController::class, 'bookings']);
     Route::post('/bookings', [AdminController::class, 'storeBooking']);
     Route::patch('/bookings/{bookingNo}/note', [AdminController::class, 'updateBookingNote']);

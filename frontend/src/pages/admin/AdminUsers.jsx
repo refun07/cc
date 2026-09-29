@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, Ban, CheckCircle2, Phone, Mail, CalendarDays } from "lucide-react";
-import { adminUsers, adminSetUserStatus, adminImpersonate } from "../../services/api";
+import { LogIn, Ban, CheckCircle2, Phone, Mail, CalendarDays, Plus, X } from "lucide-react";
+import { adminUsers, adminCreateUser, adminSetUserStatus, adminImpersonate } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import { toast } from "../../store/toastStore";
 import { PageHead, Card, Badge, Loading } from "./ui";
@@ -25,6 +25,7 @@ export default function AdminUsers() {
   const [rows, setRows] = useState(null);
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(null);
+  const [creating, setCreating] = useState(false);
   const nav = useNavigate();
   const startImpersonation = useAuthStore((s) => s.startImpersonation);
 
@@ -51,7 +52,11 @@ export default function AdminUsers() {
 
   return (
     <div>
-      <PageHead title="Users" subtitle="Customers, owners (vendors), admins and waste partners. Admins can take control of vendor accounts." />
+      <PageHead title="Users" subtitle="Customers, owners (vendors), admins and waste partners. Admins can take control of vendor accounts.">
+        <button onClick={() => setCreating(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+          <Plus className="h-4 w-4" /> Create user
+        </button>
+      </PageHead>
       <div className="mb-4 flex flex-wrap gap-2">
         {ROLES.map((r) => (
           <button key={r || "all"} onClick={() => setRole(r)}
@@ -108,6 +113,65 @@ export default function AdminUsers() {
           })}
         </div>
       )}
+      <UserModal open={creating} onClose={() => setCreating(false)} onCreated={(user) => { setCreating(false); setRole(user.role); setRows(null); adminUsers({ role: user.role }).then(setRows).catch(() => setRows([])); }} />
     </div>
   );
+}
+
+function UserModal({ open, onClose, onCreated }) {
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    password: "password",
+    role: "owner",
+    status: "active",
+  });
+  const [busy, setBusy] = useState(false);
+
+  if (!open) return null;
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const user = await adminCreateUser({ ...form, email: form.email || null });
+      toast.success("User created.");
+      onCreated(user);
+    } catch (e) {
+      toast.error(e.response?.data?.message || Object.values(e.response?.data?.errors || {})[0]?.[0] || "Could not create user.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form onSubmit={submit} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-bold text-slate-900">Create user</h2>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <Field label="Name"><input className="input min-h-11" value={form.name} onChange={set("name")} required /></Field>
+          <Field label="Phone"><input className="input min-h-11" value={form.phone} onChange={set("phone")} placeholder="01XXXXXXXXX" required /></Field>
+          <Field label="Email"><input type="email" className="input min-h-11" value={form.email} onChange={set("email")} /></Field>
+          <Field label="Password"><input type="text" className="input min-h-11" value={form.password} onChange={set("password")} required minLength={6} /></Field>
+          <Field label="Role"><select className="input min-h-11" value={form.role} onChange={set("role")}><option value="owner">Owner</option><option value="waste_partner">Waste partner</option><option value="customer">Customer</option></select></Field>
+          <Field label="Status"><select className="input min-h-11" value={form.status} onChange={set("status")}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></Field>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600">Cancel</button>
+          <button disabled={busy} className="min-h-11 rounded-xl bg-brand-600 px-5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Creating..." : "Create user"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return <label className="block"><span className="text-xs font-semibold text-slate-600">{label}</span><div className="mt-1">{children}</div></label>;
 }

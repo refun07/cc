@@ -179,11 +179,13 @@ export const ownerUpload = (file) => {
 // ---- Admin ----
 export const adminDashboard = () => api.get("/admin/dashboard").then((r) => r.data);
 export const adminCentres = (params) => api.get("/admin/centres", { params }).then((r) => r.data.data);
+export const adminCreateCentre = (payload) => api.post("/admin/centres", payload).then((r) => r.data.data);
 export const adminSetCentreStatus = (id, status) =>
   api.patch(`/admin/centres/${id}/status`, { status }).then((r) => r.data);
 export const adminSetCommissionRate = (id, commission_rate) =>
   api.patch(`/admin/centres/${id}/commission`, { commission_rate }).then((r) => r.data);
 export const adminUsers = (params) => api.get("/admin/users", { params }).then((r) => r.data.data);
+export const adminCreateUser = (payload) => api.post("/admin/users", payload).then((r) => r.data.data);
 export const adminSetUserStatus = (id, status) => api.patch(`/admin/users/${id}/status`, { status }).then((r) => r.data);
 export const adminImpersonate = (id) => api.post(`/admin/users/${id}/impersonate`).then((r) => r.data);
 export const adminCreateBooking = (payload) => api.post("/admin/bookings", payload).then((r) => r.data.data);

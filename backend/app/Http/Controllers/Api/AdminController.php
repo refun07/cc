@@ -14,6 +14,9 @@ use App\Services\SettlementService;
 use App\Support\HomepageContent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
@@ -89,6 +92,63 @@ class AdminController extends Controller
             ]);
 
         return response()->json(['data' => $centres]);
+    }
+
+    public function storeCentre(Request $request)
+    {
+        $data = $request->validate([
+            'owner_id' => ['nullable', 'exists:users,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'slug' => ['nullable', 'string', 'max:255', 'alpha_dash', 'unique:community_centres,slug'],
+            'area' => ['required', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:1000'],
+            'description' => ['nullable', 'string', 'max:3000'],
+            'capacity' => ['required', 'integer', 'min:1'],
+            'half_day_price' => ['required', 'numeric', 'min:0'],
+            'full_day_price' => ['required', 'numeric', 'min:0'],
+            'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:25'],
+            'booking_prefix' => ['nullable', 'string', 'regex:/^[A-Za-z0-9]{2,12}$/'],
+            'status' => ['required', 'in:draft,pending,active,suspended'],
+            'cover_image' => ['nullable', 'url', 'max:1000'],
+        ], [
+            'booking_prefix.regex' => 'Prefix must be 2-12 letters or numbers, no spaces.',
+        ]);
+
+        if (! empty($data['owner_id'])) {
+            User::where('id', $data['owner_id'])->where('role', 'owner')->firstOrFail();
+        }
+
+        $slug = $data['slug'] ?? Str::slug($data['name']);
+        if (! $slug) {
+            $slug = Str::lower(Str::random(8));
+        }
+
+        $baseSlug = $slug;
+        $suffix = 2;
+        while (CommunityCentre::where('slug', $slug)->exists()) {
+            $slug = "{$baseSlug}-{$suffix}";
+            $suffix++;
+        }
+
+        $centre = CommunityCentre::create([
+            'owner_id' => $data['owner_id'] ?? null,
+            'name' => $data['name'],
+            'slug' => $slug,
+            'area' => $data['area'],
+            'address' => $data['address'] ?? null,
+            'description' => $data['description'] ?? null,
+            'capacity' => $data['capacity'],
+            'base_price' => $data['half_day_price'],
+            'half_day_price' => $data['half_day_price'],
+            'full_day_price' => $data['full_day_price'],
+            'commission_rate' => round((float) ($data['commission_rate'] ?? 5), 2),
+            'booking_prefix' => strtoupper($data['booking_prefix'] ?? 'DSCC'),
+            'status' => $data['status'],
+            'is_verified' => $data['status'] === 'active',
+            'cover_image' => $data['cover_image'] ?? 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=70',
+        ]);
+
+        return response()->json(['data' => $centre], 201);
     }
 
     public function updateCentreStatus(Request $request, CommunityCentre $centre)
@@ -184,6 +244,39 @@ class AdminController extends Controller
             ]);
 
         return response()->json(['data' => $users]);
+    }
+
+    public function storeUser(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'regex:/^01[0-9]{9}$/', 'unique:users,phone'],
+            'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')],
+            'password' => ['required', 'string', 'min:6', 'max:255'],
+            'role' => ['required', 'in:owner,waste_partner,customer'],
+            'status' => ['required', 'in:active,inactive,suspended'],
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'phone' => $data['phone'],
+            'email' => $data['email'] ?? null,
+            'password' => Hash::make($data['password']),
+            'role' => $data['role'],
+            'status' => $data['status'],
+        ]);
+
+        return response()->json([
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'phone' => $user->phone,
+                'email' => $user->email,
+                'role' => $user->role,
+                'status' => $user->status,
+                'created_at' => $user->created_at?->toDateString(),
+            ],
+        ], 201);
     }
 
     /** Suspend or re-activate a user account. */
