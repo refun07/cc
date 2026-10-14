@@ -1,9 +1,12 @@
 import { parseNidText } from './nidOcr.js';
-import { chooseNidName, findNidNameRegion, findNidTextColumn, nidNameEvidence, parseNidNameCrop } from './nidName.js';
+import { chooseNidName, findNidNameLine, findNidNameRegion, findNidTextColumn, nidNameEvidence, parseNidNameCrop } from './nidName.js';
 import { cropNidName, isolateNidCard, prepareNidOcrImage } from './nidOcrImage.js';
 import { reconcileNidMrz } from './nidMrz.js';
 
 export const NID_OCR_PASSES = 5;
+// Budget phones run Tesseract several times slower than a desktop. A shorter
+// budget stopped them before the passes that read real cards had finished.
+export const NID_OCR_BUDGET_MS = 45000;
 
 export function mergeNidReadings(readings) {
   const result = { name:'', date_of_birth:'', nid_number:'' };
@@ -77,7 +80,7 @@ export function flattenNidPaper({data,width,height}) {
   return data;
 }
 
-export async function recognizeNid(worker, photo, { onPass=()=>{}, isActive=()=>true, enhance=contrastNidImage, isolate=isolateNidCard, cropName=cropNidName, prepare=prepareNidOcrImage, budgetMs=20000, now=()=>performance.now() }={}) {
+export async function recognizeNid(worker, photo, { onPass=()=>{}, isActive=()=>true, enhance=contrastNidImage, isolate=isolateNidCard, cropName=cropNidName, prepare=prepareNidOcrImage, budgetMs=NID_OCR_BUDGET_MS, now=()=>performance.now() }={}) {
   const readings=[];
   const texts=[];
   const started=now();
@@ -91,7 +94,8 @@ export async function recognizeNid(worker, photo, { onPass=()=>{}, isActive=()=>
     const parsed=parseNidText(data.text);
     if (nameOnly) parsed.name=parseNidNameCrop(data.text);
     readings.push(nameOnly ? {name:parsed.name,nameConfidence:nidNameEvidence(data,parsed.name)} : {...parsed,nameConfidence:nidNameEvidence(data,parsed.name)});
-    const region=findNidNameRegion(data);
+    // An unlabelled capitals line earns a confirming crop only if OCR was confident in it.
+    const region=findNidNameRegion(data) || (!nameOnly && !nameRegion && readings.at(-1).nameConfidence>=70 ? findNidNameLine(data,parsed.name) : null);
     if (!nameOnly && region) { nameRegion=region; nameSource=cropSource || data.imageGrey || source; }
     const column=findNidTextColumn(data);
     if (!nameOnly && column) {columnRegion=column;columnSource=data.imageGrey || source;}

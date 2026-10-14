@@ -1,13 +1,13 @@
 import { Crosshair, Image, ScanLine } from 'lucide-react';
 import { NID_OCR_PASSES } from '../lib/nidRecognition';
 
-export default function NidScanPreview({ preview, scanning, progress, pass, lang }) {
+export default function NidScanPreview({ preview, scanning, saved = false, progress, pass, lang }) {
   const tr = (en, bn) => lang === 'bn' ? bn : en;
   const reading = !!preview;
   return <div className={`nid-scan-preview${scanning ? ' is-scanning' : ''}`}>
     <div className="nid-scan-stage" aria-busy={scanning}>
       {preview
-        ? <img src={preview} alt={tr('Retained NID image', 'সংরক্ষিত এনআইডির ছবি')} />
+        ? <img src={preview} alt={saved ? tr('Retained NID image', 'সংরক্ষিত এনআইডির ছবি') : tr('NID image preview', 'এনআইডির ছবির প্রিভিউ')} />
         : <div className="nid-scan-document" aria-hidden="true">
           <Image strokeWidth={1.25} />
           <div><span /><span /><span /></div>

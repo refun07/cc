@@ -31,13 +31,22 @@ export function reconcileNidMrz(texts,fields) {
   const printedNumbers=texts.flatMap(text=>text.split(/\r?\n/).filter(line=>!line.includes('<')).flatMap(line=>[...line.matchAll(/\d[\d\s-]{8,}\d/g)].map(match=>match[0].replace(/[\s-]/g,''))));
   // Do not combine a front from one card with a different card's reverse.
   if(!printedNumbers.includes(code.nid_number))return fields;
-  // Require a full visual date agreeing with the checked YYMMDD. This avoids
-  // guessing a century or accepting a misread date just because it is plausible.
+  // Prefer a full printed date agreeing with the checked YYMMDD. Otherwise the
+  // check-digit-validated MRZ date wins over a printed reading: small print is
+  // easily misread (1995 as 1985), while a single MRZ digit error fails its check.
   const dates=texts.flatMap(text=>{
     const labelled=text.split(/\r?\n/).map(line=>parseNidText(line.replace(/date\s*of\s*(?:btn|b[il]th)\b/i,'Date of Birth')).date_of_birth);
     const printed=[...text.matchAll(/\b\d{1,2}[\s/.,-]+(?:[A-Za-z]{3,9}|\d{1,2})[\s/.,-]+\d{4}\b/g)].map(match=>parseNidText(`DOB: ${match[0]}`).date_of_birth);
     return [...labelled,...printed];
   }).filter(date=>date && date.slice(2).replace(/-/g,'')===code.birthCode);
   const date=[...new Set(dates)];
-  return {...fields,nid_number:code.nid_number,date_of_birth:date.length===1 ? date[0] : fields.date_of_birth};
+  return {...fields,nid_number:code.nid_number,date_of_birth:date.length===1 ? date[0] : nidMrzBirthDate(code.birthCode)};
+}
+
+// Smart NID holders are adults, so a two-digit year in the last 16 years is 19xx.
+export function nidMrzBirthDate(code, today=new Date()) {
+  const [, yy, mm, dd]=String(code).match(/^(\d{2})(\d{2})(\d{2})$/) || [];
+  if(!yy)return '';
+  const year=2000+Number(yy)<=today.getUTCFullYear()-16 ? 2000+Number(yy) : 1900+Number(yy);
+  return parseNidText(`Date of Birth: ${dd}/${mm}/${year}`).date_of_birth;
 }

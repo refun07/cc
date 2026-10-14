@@ -18,11 +18,11 @@ export default function RecognitionQa() {
     let worker;
     const start=performance.now();
     try {
-      const {image}=await prepareNidDocument(file);
+      const {image,ocrImage}=await prepareNidDocument(file);
       if (preview) URL.revokeObjectURL(preview);
       setPreview(URL.createObjectURL(image));
       worker=await createWorker('eng',1,{workerPath:'/ocr/worker.min.js',corePath:'/ocr/tesseract-core-lstm.wasm.js',langPath:'/ocr',logger:m=>{if(m.status==='recognizing text')setProgress(Math.round(m.progress*100));}});
-      const data=await recognizeNid(worker,image,{onPass:p=>{setPass(p);setProgress(0);},cropName:async(source,region,options)=>{const crop=await cropNidName(source,region,options);setCrops(previous=>[...previous,URL.createObjectURL(crop)]);return crop;}});
+      const data=await recognizeNid(worker,ocrImage,{onPass:p=>{setPass(p);setProgress(0);},cropName:async(source,region,options)=>{const crop=await cropNidName(source,region,options);setCrops(previous=>[...previous,URL.createObjectURL(crop)]);return crop;}});
       setResult({...data,seconds:Math.round((performance.now()-start)/1000)});
       return {...data,totalMs:Math.round(performance.now()-start)};
     } catch (error) { setError(error.message); }

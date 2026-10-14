@@ -107,7 +107,8 @@ export async function cropNidName(photo, region, {maxWidth=1800,maxHeight=600}={
     const width = Math.min(image.naturalWidth - x, Math.ceil(region.x1 - x));
     const height = Math.min(image.naturalHeight - y, Math.ceil(region.y1 - y));
     if (width < 20 || height < 8) throw new Error('name-region');
-    const scale = Math.min(4, maxWidth / width, maxHeight / height);
+    // Enlarge small print, but not past ~56px letters: Tesseract misreads huge, blurry text.
+    const scale = Math.min(4, maxWidth / width, maxHeight / height, region.textHeight ? Math.max(1, 56 / region.textHeight) : Infinity);
     canvas.width = Math.round(width * scale) + 32; canvas.height = Math.round(height * scale) + 32;
     const context = canvas.getContext('2d', {willReadFrequently:true});
     context.drawImage(image, x, y, width, height, 16, 16, width * scale, height * scale);
