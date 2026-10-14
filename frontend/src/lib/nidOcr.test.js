@@ -5,6 +5,9 @@ import { parseNidText, parseNidBirthDate, formatNidBirthDate } from './nidOcr.js
 test('D/M/Y input is unambiguous, strict and normalized for storage', () => {
   assert.equal(parseNidBirthDate('2/3/1990'),'1990-03-02');
   assert.equal(parseNidBirthDate('২০/০২/১৯৯০'),'1990-02-20');
+  assert.equal(parseNidBirthDate('20 Feb 1990'),'1990-02-20');
+  assert.equal(parseNidBirthDate('13 August 1995'),'1995-08-13');
+  assert.equal(parseNidBirthDate('20 Fob 1990'),'');
   assert.equal(formatNidBirthDate('1990-03-02'),'02/03/1990');
   for (const invalid of ['31/02/1990','02/20/1990','2/3/90','20/02/1990 extra','']) assert.equal(parseNidBirthDate(invalid),'');
   assert.equal(parseNidText('Date of\nBirth: 2/3/1990').date_of_birth,'1990-03-02');
@@ -56,4 +59,23 @@ test('recognizes limited damaged labels without repairing identifier digits',()=
   assert.equal(parseNidText('NiO No\n5837291640').nid_number,'5837291640');
   assert.equal(parseNidText('NiO No\n583729I640').nid_number,'');
   assert.equal(parseNidText('Name\nTEST PERSON _').name,'TEST PERSON');
+});
+test('reads a card whose small labels were misread or dropped',()=>{
+  const text='| og\n09% / National ID\n13 Werte Aida\nMD. TEST PERSON\nIrs\n(alls SE FE\npate of Btn 20 Feb 1990\nMD TST PRSN wove 583 729 1640';
+  assert.deepEqual(parseNidText(text),{name:'MD. TEST PERSON',date_of_birth:'1990-02-20',nid_number:'5837291640'});
+  assert.equal(parseNidText('Name\n~   MD TEST PERSON\nDate of Birth 20 Feb 1990').name,'MD TEST PERSON');
+  assert.equal(parseNidText('Dale of Bith 20 Feb 1990').date_of_birth,'1990-02-20');
+});
+test('unlabelled fallbacks never guess between candidates or outside a card front',()=>{
+  // Signature line after the birth date is not the name; two capital lines are ambiguous.
+  assert.equal(parseNidText('Date of Birth 20 Feb 1990\nMD TEST PERSON').name,'');
+  assert.equal(parseNidText('TEST PERSON\nOTHER HUMAN\nDate of Birth 20 Feb 1990').name,'');
+  assert.equal(parseNidText('GOVERNMENT OF BANGLADESH\nDate of Birth 20 Feb 1990').name,'');
+  // Numbers need a card front, a printed layout, and no neighbouring digits.
+  assert.equal(parseNidText('583 729 1640').nid_number,'');
+  assert.equal(parseNidText('Date of Birth 20 Feb 1990\n01712345678').nid_number,'');
+  assert.equal(parseNidText('Date of Birth 20 Feb 1990\nRef 1 583 729 1640 7').nid_number,'');
+  assert.equal(parseNidText('Date of Birth 20 Feb 1990\n583 729 1640\n684 739 1520').nid_number,'');
+  assert.equal(parseNidText('Date of Birth 20 Feb 1990\nI<BGD5837291640<<<').nid_number,'');
+  assert.equal(parseNidText('NID No: 6847391520\nDate of Birth 20 Feb 1990\nsignature 583 729 1640').nid_number,'6847391520');
 });

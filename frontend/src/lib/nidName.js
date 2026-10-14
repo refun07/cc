@@ -13,8 +13,15 @@ export function parseNidNameCrop(text) {
   const lines=String(text || '').split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
   // This fallback is only for a crop anchored to a Name label already observed
   // in the full image. OCR may omit the small label in an otherwise clear crop.
-  if (lines.length!==1 || BOUNDARY.test(lines[0]) || NAME_LABEL.test(lines[0])) return '';
-  return /^[a-z][a-z\s.'’-]*$/i.test(lines[0]) ? lines[0].replace(/\s+/g,' ') : '';
+  if (lines.length===1) {
+    if (BOUNDARY.test(lines[0]) || NAME_LABEL.test(lines[0])) return '';
+    return /^[a-z][a-z\s.'’-]*$/i.test(lines[0]) ? lines[0].replace(/\s+/g,' ') : '';
+  }
+  // A tight crop can still clip a neighbouring field. Accept one clear capitals
+  // name line only when every other line is a short scrap, not another name.
+  const names=lines.map(line=>line.replace(/[\s|_~]+$/,'').replace(/\s+/g,' ')).filter(line=>/^[A-Z][A-Z.'’-]*(?: [A-Z][A-Z.'’-]*)+$/.test(line) && !BOUNDARY.test(line));
+  const scraps=lines.filter(line=>!names.includes(line.replace(/[\s|_~]+$/,'').replace(/\s+/g,' ')));
+  return names.length===1 && scraps.every(line=>line.replace(/[^a-z]/gi,'').length<=4 && !NAME_LABEL.test(line)) ? names[0] : '';
 }
 
 export function findNidTextColumn(data) {
@@ -74,6 +81,22 @@ export function findNidNameRegion(data) {
   const last = Math.max(...valueLines.map(line => line.bbox.y1));
   const bottom = Math.min(last + h * .45, boundary ? boundary.bbox.y0 - 2 : Infinity);
   return { x0: b.x0 - h * .7, y0: b.y0 - h * .4, x1: Math.max(b.x1, ...valueLines.map(line => line.bbox.x1)) + h * 3, y1: bottom };
+}
+
+// When the small Name label was not read, crop the one printed line that already
+// reads as the name, so a second independent reading can confirm or reject it.
+export function findNidNameLine(data, name) {
+  if (!name || (Math.abs(data.rotateRadians || 0) > 0.01 && !data.imageGrey)) return null;
+  const target = name.replace(/[^a-z]/gi, '').toUpperCase();
+  const matches = nidOcrLines(data).filter(line => line.bbox && line.text.replace(/[^a-z]/gi, '').toUpperCase() === target);
+  if (matches.length !== 1) return null;
+  // Median word boxes avoid card lines and portrait edges that stretch a line's box.
+  const words = (matches[0].words || []).filter(word => word.bbox && /[a-z]/i.test(word.text));
+  if (!words.length) return null;
+  const median = values => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+  const h = Math.max(8, median(words.map(word => word.bbox.y1 - word.bbox.y0)));
+  const cy = median(words.map(word => (word.bbox.y0 + word.bbox.y1) / 2));
+  return { x0:Math.min(...words.map(word => word.bbox.x0)) - h * .6, y0:cy - h, x1:Math.max(...words.map(word => word.bbox.x1)) + h * .8, y1:cy + h, textHeight:h };
 }
 
 export function chooseNidName(readings) {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isPlausibleNid, isNidProfileComplete } from "./nid.js";
+import { isPlausibleNid, isNidProfileComplete, normalizeNidInput } from "./nid.js";
 
 test('NID review requires all three valid fields', () => {
   const valid = {name:'TEST PERSON',date_of_birth:'1990-02-20',nid_number:'5837291640'};
@@ -19,4 +19,10 @@ test("NID input rejects invalid lengths and obvious fake sequences", () => {
     assert.equal(isPlausibleNid(value), false, value);
   }
   assert.equal(isPlausibleNid("3216549870"), true);
+});
+
+test("typed NID numbers keep only digits a person would separate by spaces or dashes", () => {
+  assert.equal(normalizeNidInput("583 729 1640"), "5837291640");
+  assert.equal(normalizeNidInput("৫৮৩-৭২৯-১৬৪০"), "5837291640");
+  assert.equal(normalizeNidInput("583729I640"), "583729I640");
 });

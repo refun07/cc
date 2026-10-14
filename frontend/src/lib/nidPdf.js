@@ -1,4 +1,5 @@
 import { getDocument, GlobalWorkerOptions, version } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { encodeNidJpeg } from './nidPhoto';
 
 GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf/pdf-worker-${version}.js`;
 
@@ -20,9 +21,8 @@ export async function renderNidPdf(file, pageNumber) {
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
     await page.render({ canvasContext:canvas.getContext('2d'), viewport, background:'#ffffff' }).promise;
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-    if (!blob?.size || blob.size > 6 * 1024 * 1024) throw new Error('decode');
-    return { image:new File([blob], `nid-page-${pageNumber}.jpg`, { type:'image/jpeg' }), pages:pdf.numPages, page:pageNumber };
+    const { full, upload } = await encodeNidJpeg(canvas);
+    return { image:new File([upload], `nid-page-${pageNumber}.jpg`, { type:'image/jpeg' }), ocrImage:new File([full], `nid-page-${pageNumber}-ocr.jpg`, { type:'image/jpeg' }), pages:pdf.numPages, page:pageNumber };
   } catch (error) {
     if (error.name === 'PasswordException') throw new Error('password');
     throw error;

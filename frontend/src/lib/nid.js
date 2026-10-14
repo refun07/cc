@@ -6,6 +6,11 @@ export function isPlausibleNid(value) {
     && !"987654321098765432109876543210".includes(nid);
 }
 
+// Typed as printed ("583 729 1640") or in Bengali digits; letters are left for validation to reject.
+export function normalizeNidInput(value) {
+  return String(value || "").replace(/[০-৯]/g, digit => String("০১২৩৪৫৬৭৮৯".indexOf(digit))).replace(/[\s-]/g, "");
+}
+
 export function isNidProfileComplete(form, today = new Date().toISOString().slice(0, 10)) {
   const name = String(form.name || '').trim();
   const dob = String(form.date_of_birth || '');
