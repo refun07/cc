@@ -42,7 +42,8 @@ export default function OwnerAccounting() {
 
   return (
     <div>
-      <PageHead title="Accounting" subtitle="Income, expenses, payroll, profit and DSCC payout settlements for your centre." />
+      <PageHead title="Accounting" subtitle="Income, expenses, payroll, profit and ICCMS payout settlements for your centre." />
+      {d.history?.legacy_aggregate_count > 0 && <p role="status" className="my-3 border-l-4 border-amber-500 bg-amber-50 p-3 text-sm text-amber-950">Legacy payment totals are included. Earlier installment dates are unavailable; these records use the last recorded payment date.</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={TrendingUp} label="Total income" value={s.income} money accent="emerald" />
@@ -76,7 +77,11 @@ export default function OwnerAccounting() {
         </Card>
       )}
 
-      <Card title="DSCC settlements" action={<span className="text-xs text-slate-400">Based on payment date</span>}>
+      <Card title="ICCMS settlements" action={<span className="text-xs text-slate-400">Based on payment date</span>}>
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+          <p>Cash collected at the centre is excluded from payouts. Cash VAT and fees require separate reconciliation.</p>
+          {d.centre_cash && <p className="mt-2"><span>Centre cash retained (all time, after refunds)</span>: {taka(d.centre_cash.net_collected)} · <span>Cash fees and tax to reconcile (all time)</span>: {taka(d.centre_cash.fees_tax_to_reconcile)}</p>}
+        </div>
         {!d.settlements?.length ? (
           <div className="p-10 text-center text-sm text-slate-400">No settlement has been generated yet.</div>
         ) : (
@@ -91,7 +96,7 @@ export default function OwnerAccounting() {
                 <td className="px-5 py-3 tabular-nums text-slate-500">{taka(row.tax_amount)}</td>
                 <td className={`px-5 py-3 tabular-nums ${Number(row.adjustment_amount) < 0 ? "text-rose-600" : "text-emerald-600"}`}>{taka(row.adjustment_amount)}</td>
                 <td className="px-5 py-3 font-extrabold tabular-nums text-emerald-700">{taka(row.net_amount)}</td>
-                <td className="px-5 py-3"><Badge status={row.status} />{row.payment_reference && <div className="mt-1 font-mono text-[10px] text-slate-400">{row.payment_reference}</div>}</td>
+                <td className="px-5 py-3"><Badge status={row.status} />{row.contains_centre_cash && <div className="mt-1 text-xs font-semibold text-amber-800">Centre cash: reconciliation required</div>}{row.payment_reference && <div className="mt-1 font-mono text-[10px] text-slate-400">{row.payment_reference}</div>}</td>
               </tr>
             ))}
           </Table>

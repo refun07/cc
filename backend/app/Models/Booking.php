@@ -11,6 +11,7 @@ class Booking extends Model
     protected $casts = [
         'event_date' => 'date:Y-m-d',
         'cancelled_at' => 'datetime',
+        'completion_verified_at' => 'datetime',
         'attachments' => 'array',
     ];
 
@@ -44,9 +45,19 @@ class Booking extends Model
         return $this->hasOne(Payment::class, 'booking_id');
     }
 
+    public function paymentAttempts()
+    {
+        return $this->hasMany(PaymentAttempt::class);
+    }
+
     public function settlementItem()
     {
         return $this->hasOne(SettlementItem::class);
+    }
+
+    public function completionReport()
+    {
+        return $this->hasOne(BookingCompletionReport::class);
     }
 
     public function getRouteKeyName(): string

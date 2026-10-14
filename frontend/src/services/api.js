@@ -34,8 +34,19 @@ api.interceptors.response.use(
 export const registerAccount = (payload) =>
   api.post("/auth/register", payload).then((r) => r.data);
 
+export const requestRegistrationOtp = (phone) =>
+  api.post("/auth/register/otp", { phone }).then((r) => r.data);
+
+export const requestPasswordOtp = (phone) =>
+  api.post("/auth/password/otp", { phone }).then((r) => r.data);
+
+export const resetPasswordByPhone = (payload) =>
+  api.post("/auth/password/reset", payload).then((r) => r.data);
+
 export const loginAccount = (payload) =>
   api.post("/auth/login", payload).then((r) => r.data);
+
+export const getMyAccount = () => api.get("/auth/me").then((r) => r.data.user);
 
 export const fetchMyBookings = () =>
   api.get("/customer/bookings").then((r) => r.data.data);
@@ -43,8 +54,28 @@ export const fetchMyBookings = () =>
 export const updateMyProfile = (payload) =>
   api.patch("/auth/profile", payload).then((r) => r.data.user);
 
+export const requestProfilePhoneOtp = (phone) =>
+  api.post("/auth/profile/phone/otp", { phone }).then((r) => r.data);
+
 export const changeMyPassword = (payload) =>
   api.post("/auth/change-password", payload).then((r) => r.data);
+
+export const getCentreReviews = (slug, page = 1) => api.get(`/centres/${slug}/reviews`, { params: { page } }).then((r) => r.data);
+export const saveCentreReview = (slug, payload) => api.post(`/centres/${slug}/reviews`, payload).then((r) => r.data);
+export const sendSoftwareFeedback = (payload) => api.post("/software-feedback", payload).then((r) => r.data);
+export const getBookingSoftwareFeedback = (bookingNo) => api.get(`/bookings/${encodeURIComponent(bookingNo)}/software-feedback`).then((r) => r.data.data);
+export const adminSoftwareFeedback = (page = 1) => api.get("/admin/software-feedback", { params: { page } }).then((r) => r.data.data);
+export const areaOverview = (page = 1) => api.get("/area/overview", { params: { page } }).then((r) => r.data.data);
+export const wasteDelays = (scope = "overdue", page = 1) => api.get("/waste-delays", { params: { scope, page } }).then((r) => r.data.data);
+export const coordinatorOverview = (page = 1) => api.get("/coordinator/overview", { params: { page } }).then((r) => r.data.data);
+export const coordinatorCreateBooking = (payload) => api.post("/coordinator/bookings", payload).then((r) => r.data.data);
+export const coordinatorBookingNote = (bookingNo, notes) => api.patch(`/coordinator/bookings/${bookingNo}/note`, { notes }).then((r) => r.data);
+export const coordinatorVerifyCompletion = (bookingNo) => api.patch(`/coordinator/bookings/${encodeURIComponent(bookingNo)}/verify-completion`).then((r) => r.data);
+export const serviceTickets = (params = {}) => api.get('/service-tickets', { params }).then((r) => r.data.data);
+export const serviceTicketOptions = () => api.get('/service-tickets/options').then((r) => r.data.data);
+export const serviceTicketDetails = (id) => api.get(`/service-tickets/${id}`).then((r) => r.data.data);
+export const createServiceTicket = (payload) => api.post('/service-tickets', payload).then((r) => r.data.data);
+export const serviceTicketAction = (id, payload) => api.post(`/service-tickets/${id}/actions`, payload).then((r) => r.data.data);
 
 // ---- Notifications (any signed-in role) ----
 export const getNotifications = () => api.get("/notifications").then((r) => r.data);
@@ -65,6 +96,10 @@ export const ownerMenus = () => api.get("/owner/menus").then((r) => r.data.data)
 export const ownerCreateMenu = (payload) => api.post("/owner/menus", payload).then((r) => r.data.data);
 export const ownerUpdateMenu = (id, payload) => api.patch(`/owner/menus/${id}`, payload).then((r) => r.data.data);
 export const ownerDeleteMenu = (id) => api.delete(`/owner/menus/${id}`).then((r) => r.data);
+export const ownerDecorators = () => api.get("/owner/decorators").then((r) => r.data);
+export const ownerCreateDecorator = (payload) => api.post("/owner/decorators", payload).then((r) => r.data.data);
+export const ownerUpdateDecorator = (id, payload) => api.put(`/owner/decorators/${id}`, payload).then((r) => r.data.data);
+export const ownerDeleteDecorator = (id) => api.delete(`/owner/decorators/${id}`).then((r) => r.data);
 export const ownerAvailability = (params) => api.get("/owner/availability", { params }).then((r) => r.data.data);
 export const ownerToggleBlock = (payload) => api.post("/owner/availability/toggle", payload).then((r) => r.data);
 export const ownerAddFacility = (payload) => api.post("/owner/facilities", payload).then((r) => r.data.data);
@@ -180,29 +215,51 @@ export const ownerUpload = (file) => {
 export const adminDashboard = () => api.get("/admin/dashboard").then((r) => r.data);
 export const adminCentres = (params) => api.get("/admin/centres", { params }).then((r) => r.data.data);
 export const adminCreateCentre = (payload) => api.post("/admin/centres", payload).then((r) => r.data.data);
+export const adminSetDecoratorPhone = (id, decorator_phone) =>
+  api.patch(`/admin/centres/${id}/decorator`, { decorator_phone }).then((r) => r.data);
+export const adminSetDecoratorContact = (id, payload) =>
+  api.patch(`/admin/centres/${id}/decorator-contact`, payload).then((r) => r.data.data);
 export const adminSetCentreStatus = (id, status) =>
   api.patch(`/admin/centres/${id}/status`, { status }).then((r) => r.data);
 export const adminSetCommissionRate = (id, commission_rate) =>
   api.patch(`/admin/centres/${id}/commission`, { commission_rate }).then((r) => r.data);
 export const adminUsers = (params) => api.get("/admin/users", { params }).then((r) => r.data.data);
 export const adminCreateUser = (payload) => api.post("/admin/users", payload).then((r) => r.data.data);
+export const adminUpdateCoordinator = (id, payload) => api.patch(`/admin/users/${id}/coordinator`, payload).then((r) => r.data.data);
 export const adminSetUserStatus = (id, status) => api.patch(`/admin/users/${id}/status`, { status }).then((r) => r.data);
 export const adminImpersonate = (id) => api.post(`/admin/users/${id}/impersonate`).then((r) => r.data);
 export const adminCreateBooking = (payload) => api.post("/admin/bookings", payload).then((r) => r.data.data);
-export const adminReports = () => api.get("/admin/reports").then((r) => r.data);
-export const adminExport = async (type) => {
-  const res = await api.get(`/admin/export/${type}`, { responseType: "blob" });
+export const adminReports = (params = {}) => api.get("/admin/reports", { params }).then((r) => r.data);
+export const adminExport = async (type, params = {}) => {
+  const res = await api.get(`/admin/export/${type}`, { params, responseType: "blob" });
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `dscc-${type}.csv`;
+  a.download = `iccms-${type}-${params.from || "all"}-${params.to || "all"}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  return Number(res.headers["x-export-count"] || 0);
 };
 export const adminBookings = (params) => api.get("/admin/bookings", { params }).then((r) => r.data.data);
-export const adminPayments = () => api.get("/admin/payments").then((r) => r.data.data);
+export const adminPayments = (params = {}) => api.get("/admin/payments", { params }).then((r) => r.data);
+export const adminSetCentreType = (id, centreType) =>
+  api.patch(`/admin/centres/${id}/type`, { centre_type: centreType }).then((r) => r.data.data);
+export const adminSetCentreLocation = (id, payload) =>
+  api.patch(`/admin/centres/${id}/location`, payload).then((r) => r.data.data);
+export const adminUpdateAreaAdmin = (id, payload) =>
+  api.patch(`/admin/users/${id}/area-admin`, payload).then((r) => r.data.data);
+export const adminUpdateCaretaker = (id, payload) =>
+  api.patch(`/admin/users/${id}/caretaker`, payload).then((r) => r.data.data);
+export const caretakerOverview = () => api.get("/caretaker/overview").then((r) => r.data.data);
+export const caretakerReport = (bookingNo, payload) =>
+  api.post(`/caretaker/bookings/${encodeURIComponent(bookingNo)}/report`, payload).then((r) => r.data.data);
+export const eventReports = () => api.get("/event-reports").then((r) => r.data.data);
 
 export const getHomepage = () => api.get("/homepage").then((r) => r.data.data);
+export const getGuides = () => api.get("/guides").then((r) => r.data.data);
+export const getGuide = (slug) => api.get(`/guides/${encodeURIComponent(slug)}`).then((r) => r.data.data);
+export const adminGuides = () => api.get("/admin/guides").then((r) => r.data.data);
+export const adminSaveGuides = (guides) => api.put("/admin/guides", { guides }).then((r) => r.data.data);
 export const adminHomepage = () => api.get("/admin/homepage").then((r) => r.data.data);
 export const adminUpdateHomepage = (payload) => api.patch("/admin/homepage", payload).then((r) => r.data.data);
 export const adminResetHomepage = () => api.post("/admin/homepage/reset").then((r) => r.data.data);
@@ -244,7 +301,13 @@ export const getBooking = (bookingNo) =>
   api.get(`/bookings/${bookingNo}`).then((r) => r.data.data);
 
 export const initiatePayment = (payload) =>
-  api.post("/payments/initiate", payload).then((r) => r.data.data);
+  api.post("/payments/initiate", payload).then((r) => r.data);
+
+export const paymentAvailability = () =>
+  api.get("/payments/availability").then((r) => r.data.online_available);
+
+export const recordOfflinePayment = (payload) =>
+  api.post("/owner/payments/offline", payload).then((r) => r.data.data);
 
 export const cancelBooking = (bookingNo, payload) =>
   api.post(`/bookings/${bookingNo}/cancel`, payload).then((r) => r.data.data);

@@ -1,98 +1,99 @@
 import { PHRASES_BN } from "./phrases";
+import { translateBangla } from "./translateBangla";
 
-/**
- * Global auto-translator. Walks visible text nodes (and input placeholders)
- * and swaps exact-match English phrases for Bangla, so every screen — admin,
- * owner, customer — is covered without wrapping each string by hand.
- * Dynamic data (names, numbers, IDs) never matches the dictionary, so it stays
- * as-is. Switching back to English restores the stored originals.
- */
-
-const DICT = { bn: PHRASES_BN };
-// Reverse lookup (translated value -> true) so we can recognise our own output
-// and never re-process it, which keeps dynamic re-renders working correctly.
-const REVERSE = { bn: new Set(Object.values(PHRASES_BN)) };
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "CODE", "PRE", "TEXTAREA"]);
-const ORIG = "__i18nOrig";        // stored original text on a text node
-const ORIG_PH = "__i18nOrigPh";   // stored original placeholder on an input
+const ATTRIBUTES = ["placeholder", "aria-label", "title", "alt"];
+const textState = new WeakMap();
+const attributeState = new WeakMap();
+let observer = null;
 
-function translateText(map, reverse, node) {
-  // Always read the CURRENT value: React may have rewritten this node with new
-  // text (e.g. a status changing). Never trust a previously cached original.
+function translateText(node) {
   const current = node.nodeValue;
-  const key = current.trim();
-  if (!key) return;
-  if (reverse.has(key)) return; // already our own translated output — leave it
-  const hit = map[key];
-  if (hit === undefined) return;
-  node[ORIG] = current; // refresh so a later restore/rewrite uses the latest English
-  node.nodeValue = current.replace(key, hit);
+  if (!current?.trim()) return;
+  const previous = textState.get(node);
+  if (previous?.translated === current) return;
+
+  const translated = translateBangla(current, PHRASES_BN);
+  if (translated === current) {
+    textState.delete(node);
+    return;
+  }
+  textState.set(node, { original: current, translated });
+  node.nodeValue = translated;
 }
 
 function restoreText(node) {
-  if (node[ORIG] !== undefined && node.nodeValue !== node[ORIG]) node.nodeValue = node[ORIG];
+  const previous = textState.get(node);
+  if (previous?.translated === node.nodeValue) node.nodeValue = previous.original;
+  textState.delete(node);
 }
 
-function walkElement(el, fn) {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode(n) {
-      const p = n.parentNode;
-      if (!p || SKIP_TAGS.has(p.nodeName)) return NodeFilter.FILTER_REJECT;
-      if (p.isContentEditable) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  let n;
-  while ((n = walker.nextNode())) fn(n);
+function translateAttribute(el, name) {
+  const current = el.getAttribute(name);
+  if (!current) return;
+  const state = attributeState.get(el) || {};
+  if (state[name]?.translated === current) return;
+
+  const translated = translateBangla(current, PHRASES_BN);
+  if (translated === current) {
+    delete state[name];
+    attributeState.set(el, state);
+    return;
+  }
+  state[name] = { original: current, translated };
+  attributeState.set(el, state);
+  el.setAttribute(name, translated);
 }
 
-function handlePlaceholders(root, map) {
-  const inputs = root.querySelectorAll?.("input[placeholder], textarea[placeholder]") || [];
-  inputs.forEach((el) => {
-    const original = el[ORIG_PH] ?? el.getAttribute("placeholder");
-    if (!original) return;
-    if (map) {
-      const hit = map[original.trim()];
-      if (hit === undefined) return;
-      if (el[ORIG_PH] === undefined) el[ORIG_PH] = original;
-      el.setAttribute("placeholder", hit);
-    } else if (el[ORIG_PH] !== undefined) {
-      el.setAttribute("placeholder", el[ORIG_PH]);
+function restoreAttribute(el, name) {
+  const state = attributeState.get(el);
+  if (state?.[name]?.translated === el.getAttribute(name)) {
+    el.setAttribute(name, state[name].original);
+  }
+  if (state) delete state[name];
+}
+
+function walk(root, onText, onAttribute) {
+  const visit = (el) => {
+    if (el.isContentEditable || el.closest?.("[data-no-translate]")) return;
+    for (const name of ATTRIBUTES) {
+      if (el.hasAttribute(name)) onAttribute(el, name);
     }
-  });
+    if (SKIP_TAGS.has(el.nodeName)) return;
+    for (const child of el.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) onText(child);
+      else if (child.nodeType === Node.ELEMENT_NODE) visit(child);
+    }
+  };
+  if (root.nodeType === Node.TEXT_NODE) onText(root);
+  else if (root.nodeType === Node.ELEMENT_NODE) visit(root);
 }
 
-let observer = null;
-
-/** Apply (lang="bn") or restore (lang="en") translation across the whole document. */
 export function applyAutoTranslate(lang) {
-  if (observer) { observer.disconnect(); observer = null; }
-  const map = DICT[lang];
-  const reverse = REVERSE[lang];
+  observer?.disconnect();
+  observer = null;
+  if (!document.body) return;
 
-  if (!map) {
-    walkElement(document.body, restoreText);
-    handlePlaceholders(document.body, null);
+  if (lang !== "bn") {
+    walk(document.body, restoreText, restoreAttribute);
     return;
   }
 
-  walkElement(document.body, (n) => translateText(map, reverse, n));
-  handlePlaceholders(document.body, map);
-
-  // Re-translate anything React renders later (route changes, modals, lists).
+  walk(document.body, translateText, translateAttribute);
   observer = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      if (m.type === "characterData" && m.target.nodeType === Node.TEXT_NODE) {
-        translateText(map, reverse, m.target);
+    for (const mutation of mutations) {
+      if (mutation.type === "characterData") translateText(mutation.target);
+      if (mutation.type === "attributes") translateAttribute(mutation.target, mutation.attributeName);
+      for (const node of mutation.addedNodes || []) {
+        walk(node, translateText, translateAttribute);
       }
-      m.addedNodes?.forEach((node) => {
-        if (node.nodeType === Node.TEXT_NODE) translateText(map, reverse, node);
-        else if (node.nodeType === Node.ELEMENT_NODE) {
-          walkElement(node, (n) => translateText(map, reverse, n));
-          handlePlaceholders(node, map);
-        }
-      });
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ATTRIBUTES,
+  });
 }

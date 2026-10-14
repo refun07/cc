@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { UserCircle2, Phone, Mail, Lock, ShieldCheck, Save, LogOut, CalendarCheck } from "lucide-react";
+import { UserCircle2, Phone, Lock, ShieldCheck, Save, LogOut, CalendarCheck } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
-import { updateMyProfile, changeMyPassword } from "../services/api";
+import { updateMyProfile, changeMyPassword, requestProfilePhoneOtp } from "../services/api";
 import { toast } from "../store/toastStore";
+import NidProfile from "../components/NidProfile";
 
 export default function Profile() {
   const { user, setAuth, token, logout } = useAuthStore();
-  const [profile, setProfile] = useState({ name: "", phone: "", email: "" });
+  const [profile, setProfile] = useState({ name: "", phone: "", code: "" });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [sendingPhoneOtp, setSendingPhoneOtp] = useState(false);
   const [pw, setPw] = useState({ current_password: "", password: "", password_confirmation: "" });
   const [savingPw, setSavingPw] = useState(false);
 
   useEffect(() => {
-    if (user) setProfile({ name: user.name || "", phone: user.phone || "", email: user.email || "" });
+    if (user) setProfile({ name: user.name || "", phone: user.phone || "", code: "" });
   }, [user]);
 
   if (!user) {
@@ -24,6 +26,20 @@ export default function Profile() {
       </div>
     );
   }
+
+  const phoneChanged = profile.phone !== user.phone;
+
+  const sendPhoneCode = async () => {
+    setSendingPhoneOtp(true);
+    try {
+      await requestProfilePhoneOtp(profile.phone);
+      toast.success("Verification code sent to the new number.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Could not send a code.");
+    } finally {
+      setSendingPhoneOtp(false);
+    }
+  };
 
   const saveProfile = async (e) => {
     e.preventDefault();
@@ -69,7 +85,7 @@ export default function Profile() {
                 <ShieldCheck className="h-3.5 w-3.5" /> My profile
               </div>
               <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">{user.name}</h1>
-              <p className="mt-0.5 text-sm text-slate-300">{user.phone}{user.email ? ` · ${user.email}` : ""}</p>
+              <p className="mt-0.5 text-sm text-slate-300">{user.phone}</p>
             </div>
           </div>
           <Link to="/my-bookings" className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">
@@ -83,8 +99,13 @@ export default function Profile() {
         <h2 className="flex items-center gap-2 font-bold text-slate-900"><UserCircle2 className="h-5 w-5 text-brand-600" /> Account details</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label="Full name" icon={UserCircle2} value={profile.name} onChange={(v) => setProfile((p) => ({ ...p, name: v }))} />
-          <Field label="Mobile number" icon={Phone} value={profile.phone} onChange={(v) => setProfile((p) => ({ ...p, phone: v }))} placeholder="01XXXXXXXXX" />
-          <Field label="Email" icon={Mail} value={profile.email} onChange={(v) => setProfile((p) => ({ ...p, email: v }))} placeholder="you@example.com" className="sm:col-span-2" />
+          <Field label="Mobile number" icon={Phone} value={profile.phone} onChange={(v) => setProfile((p) => ({ ...p, phone: v, code: "" }))} placeholder="01XXXXXXXXX" />
+          {phoneChanged && <>
+            <button type="button" onClick={sendPhoneCode} disabled={sendingPhoneOtp} className="self-end rounded-lg border border-brand-300 px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-50">
+              {sendingPhoneOtp ? "Sending…" : "Send SMS code"}
+            </button>
+            <Field label="Code sent to new number" icon={Lock} value={profile.code} onChange={(v) => setProfile((p) => ({ ...p, code: v }))} placeholder="6-digit code" />
+          </>}
         </div>
         <div className="mt-5">
           <button disabled={savingProfile} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60">
@@ -94,6 +115,7 @@ export default function Profile() {
       </form>
 
       {/* Password */}
+      <div className="mt-6 border-y border-slate-200 py-6"><NidProfile userId={user.id} onSaved={(identity) => setAuth({ user: { ...user, name: identity.name, nid_saved: true }, token })} /></div>
       <form onSubmit={savePassword} className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
         <h2 className="flex items-center gap-2 font-bold text-slate-900"><Lock className="h-5 w-5 text-brand-600" /> Change password</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

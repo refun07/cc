@@ -6,6 +6,7 @@ import { ownerProfile, ownerUpdateProfile, ownerUploadCover, ownerAddGallery, ow
 import { PageHead, Card, Loading } from "../admin/ui";
 import { toast } from "../../store/toastStore";
 import { askConfirm } from "../../store/confirmStore";
+import { tourUrl } from "../../lib/tourUrl";
 
 export default function OwnerProfile() {
   const [centre, setCentre] = useState(null);
@@ -26,7 +27,7 @@ export default function OwnerProfile() {
         name: c.name || "", area: c.area || "", address: c.address || "", description: c.description || "",
         capacity: c.capacity || 0, base_price: c.base_price || 0, half_day_price: c.half_day_price || 0,
         full_day_price: c.full_day_price || 0, virtual_tour_url: c.virtual_tour_url || "",
-        booking_prefix: c.booking_prefix || "DSCC",
+        booking_prefix: c.booking_prefix || "ICCMS",
       });
     }).catch(() => setCentre(false));
   }, []);
@@ -47,7 +48,7 @@ export default function OwnerProfile() {
         half_day_price: Number(form.half_day_price),
         full_day_price: Number(form.full_day_price),
         virtual_tour_url: form.virtual_tour_url || null,
-        booking_prefix: (form.booking_prefix || "DSCC").toUpperCase(),
+        booking_prefix: (form.booking_prefix || "ICCMS").toUpperCase(),
       });
       setSaved(true); setTimeout(() => setSaved(false), 2500);
       toast.success("Profile updated.");
@@ -126,7 +127,8 @@ export default function OwnerProfile() {
         <Card title="Centre details">
           <div className="grid grid-cols-2 gap-4 p-5">
             <L label="Centre name"><input className="input" value={form.name ?? ""} onChange={set("name")} /></L>
-            <L label="Area"><input className="input" value={form.area ?? ""} onChange={set("area")} placeholder="e.g. Dhanmondi" /></L>
+            <L label="Area"><input className="input" value={form.area ?? ""} onChange={set("area")} placeholder="e.g. Basabo" /></L>
+            <L label="Working area"><input className="input bg-slate-50" value={centre.working_area || ""} readOnly /></L>
             <L label="Address" full><input className="input" value={form.address ?? ""} onChange={set("address")} /></L>
             <L label="Description" full>
               <RichTextEditor
@@ -135,17 +137,20 @@ export default function OwnerProfile() {
                 placeholder="Describe your venue — halls, catering, parking, standout features…"
               />
             </L>
-            <L label="Virtual tour URL" full><input className="input" placeholder="https://…" value={form.virtual_tour_url ?? ""} onChange={set("virtual_tour_url")} /></L>
+            <L label="Virtual tour URL" full>
+              <input type="url" className="input" maxLength={255} placeholder="https://…" value={form.virtual_tour_url ?? ""} onChange={set("virtual_tour_url")} />
+              {tourUrl(form.virtual_tour_url) && <a href={tourUrl(form.virtual_tour_url)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline"><ExternalLink className="h-4 w-4" /> Open virtual tour</a>}
+            </L>
             <L label="Booking code prefix" full>
               <input
                 className="input uppercase"
                 maxLength={12}
                 value={form.booking_prefix}
                 onChange={(e) => setForm((f) => ({ ...f, booking_prefix: e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase() }))}
-                placeholder="DSCC"
+                placeholder="ICCMS"
               />
               <p className="mt-1 text-[11px] text-slate-400">
-                2–12 letters/numbers. New bookings will look like <span className="font-mono font-semibold text-slate-600">{(form.booking_prefix || "DSCC")}-A1B2C3D4</span>. Existing booking numbers don't change.
+                2–12 letters/numbers. New bookings will look like <span className="font-mono font-semibold text-slate-600">{(form.booking_prefix || "ICCMS")}-A1B2C3D4</span>. Existing booking numbers don't change.
               </p>
             </L>
           </div>

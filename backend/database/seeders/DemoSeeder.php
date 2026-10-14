@@ -126,7 +126,7 @@ class DemoSeeder extends Seeder
                 }
 
                 $booking = Booking::create([
-                    'booking_no' => 'DSCC-'.strtoupper(Str::random(8)),
+                    'booking_no' => 'ICCMS-'.strtoupper(Str::random(8)),
                     'user_id' => $customer->id,
                     'centre_id' => $centre->id,
                     'customer_name' => $cname,

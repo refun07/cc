@@ -10,6 +10,7 @@ import { toast } from "../../store/toastStore";
 import logo from "../../assets/dscc_3.jpg";
 import NotificationBell from "../../components/NotificationBell";
 import ImpersonationBanner from "../../components/ImpersonationBanner";
+import LanguageSwitcher from "../../components/LanguageSwitcher";
 
 const ATT = { present: "bg-emerald-100 text-emerald-700", absent: "bg-rose-100 text-rose-700", leave: "bg-amber-100 text-amber-700", late: "bg-orange-100 text-orange-700" };
 
@@ -50,9 +51,9 @@ function StaffDashboard({ onLogout }) {
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2">
             <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-white p-0.5"><img src={logo} alt="" className="h-full w-full rounded object-cover" /></span>
-            <div><div className="text-sm font-bold">Staff Portal</div><div className="text-[10px] uppercase tracking-wider text-emerald-300/70">DSCC Marketplace</div></div>
+            <div><div className="text-sm font-bold">Staff Portal</div><div className="text-[10px] uppercase tracking-wider text-emerald-300/70">ICCMS DSCC</div></div>
           </Link>
-          <div className="flex items-center gap-2"><NotificationBell dark={true} /><button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/20"><LogOut className="h-4 w-4" /> Sign out</button></div>
+          <div className="flex items-center gap-2"><LanguageSwitcher tone="light" /><NotificationBell dark={true} /><button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/20"><LogOut className="h-4 w-4" /> Sign out</button></div>
         </div>
       </header>
 
@@ -172,6 +173,7 @@ function StaffLogin() {
     <div className="relative flex min-h-dvh items-center justify-center bg-emerald-950 p-4">
       <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px,#fff 1px,transparent 0)", backgroundSize: "22px 22px" }} />
       <div className="relative w-full max-w-sm rounded-3xl bg-white p-7 shadow-2xl">
+        <div className="mb-2 flex justify-end"><LanguageSwitcher /></div>
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 ring-1 ring-slate-200"><img src={logo} alt="" className="h-full w-full rounded-xl object-cover" /></span>
           <div><div className="font-display text-xl font-bold text-slate-900">Staff Portal</div><div className="inline-flex items-center gap-1 text-xs text-slate-400"><IdCard className="h-3.5 w-3.5" /> Sign in to your staff account</div></div>

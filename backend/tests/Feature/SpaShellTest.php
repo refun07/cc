@@ -44,6 +44,7 @@ class SpaShellTest extends TestCase
             'home' => ['/'],
             'centre listing' => ['/centres'],
             'centre detail' => ['/centres/dhanmondi-community-centre'],
+            'centre booking step' => ['/centres/dhanmondi-community-centre/book'],
             'checkout' => ['/checkout'],
             'booking result' => ['/booking/DSCC-TEST'],
             'customer account' => ['/my-bookings'],

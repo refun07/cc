@@ -13,16 +13,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('availability_slots', function (Blueprint $table) {
-            $table->dropUnique('availability_slots_centre_id_date_session_type_unique');
             $table->unique(['centre_id', 'centre_floor_id', 'date', 'session_type'], 'availability_slots_centre_floor_date_session_unique');
+            // Keep an index supporting the centre foreign key throughout the change.
+            $table->dropUnique('availability_slots_centre_id_date_session_type_unique');
         });
     }
 
     public function down(): void
     {
         Schema::table('availability_slots', function (Blueprint $table) {
-            $table->dropUnique('availability_slots_centre_floor_date_session_unique');
             $table->unique(['centre_id', 'date', 'session_type'], 'availability_slots_centre_id_date_session_type_unique');
+            $table->dropUnique('availability_slots_centre_floor_date_session_unique');
         });
     }
 };

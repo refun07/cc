@@ -8,6 +8,16 @@ class Settlement extends Model
 {
     protected $guarded = [];
 
+    public function scopeWithCashFlag($query)
+    {
+        return $query->withExists(['items as contains_centre_cash' => fn ($items) => $items->centreCash()]);
+    }
+
+    public function scopeWithoutCentreCash($query)
+    {
+        return $query->whereDoesntHave('items', fn ($items) => $items->centreCash());
+    }
+
     protected $casts = [
         'period_start' => 'date:Y-m-d',
         'period_end' => 'date:Y-m-d',

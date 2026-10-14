@@ -37,12 +37,12 @@ export function StatCard({ icon: Icon, label, value, money, accent = "brand" }) 
       : (Number.isFinite(numericValue) ? numericValue : 0).toLocaleString("en-BD");
 
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 ${rings[accent]}`}>
+    <div className={`min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 sm:p-5 ${rings[accent]}`}>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-500">{label}</span>
-        {Icon && <span className={`grid h-9 w-9 place-items-center rounded-lg ${colors[accent]}`}><Icon className="h-5 w-5" /></span>}
+        <span className="min-w-0 text-xs font-medium text-slate-500 sm:text-sm">{label}</span>
+        {Icon && <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg sm:h-9 sm:w-9 ${colors[accent]}`}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></span>}
       </div>
-      <div className="mt-3 text-2xl font-extrabold tabular-nums tracking-tight text-slate-900">
+      <div className="mt-2 break-words text-xl font-extrabold tabular-nums text-slate-900 sm:mt-3 sm:text-2xl">
         {displayValue}
       </div>
     </div>
@@ -51,7 +51,7 @@ export function StatCard({ icon: Icon, label, value, money, accent = "brand" }) 
 
 export function Card({ title, action, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
       {title && (
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <h2 className="font-semibold text-slate-900">{title}</h2>

@@ -13,6 +13,7 @@ class WasteStream extends Model
         'pickup_scheduled_for' => 'datetime',
         'collected_at' => 'datetime',
         'processed_at' => 'datetime',
+        'pickup_delay_alerted_at' => 'datetime',
     ];
 
     public function centre()
@@ -24,4 +25,8 @@ class WasteStream extends Model
     {
         return $this->belongsTo(User::class, 'assigned_partner_id');
     }
+
+    public function requester() { return $this->belongsTo(User::class, 'requested_by'); }
+    public function assigner() { return $this->belongsTo(User::class, 'assigned_by'); }
+    public function collectionConfirmer() { return $this->belongsTo(User::class, 'collection_confirmed_by'); }
 }

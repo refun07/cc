@@ -22,6 +22,7 @@ class StaffController extends Controller
     {
         $e = $this->employee($request);
         $today = now()->toDateString();
+        $attendance = Attendance::where('employee_id', $e->id)->where('date', $today)->first();
 
         return response()->json([
             'profile' => [
@@ -35,10 +36,8 @@ class StaffController extends Controller
                 'centre' => $e->centre?->name,
                 'area' => $e->centre?->area,
             ],
-            'today_attendance' => Attendance::where('employee_id', $e->id)->where('date', $today)->value('status'),
-            'today_check_in' => optional(Attendance::where('employee_id', $e->id)->where('date', $today)->value('check_in_at'))
-                ? \Illuminate\Support\Carbon::parse(Attendance::where('employee_id', $e->id)->where('date', $today)->value('check_in_at'))->format('h:i A')
-                : null,
+            'today_attendance' => $attendance?->status,
+            'today_check_in' => $attendance?->check_in_at?->format('h:i A'),
             'stats' => [
                 'present_30d' => Attendance::where('employee_id', $e->id)->where('date', '>=', now()->subDays(30)->toDateString())->where('status', 'present')->count(),
                 'absent_30d' => Attendance::where('employee_id', $e->id)->where('date', '>=', now()->subDays(30)->toDateString())->where('status', 'absent')->count(),

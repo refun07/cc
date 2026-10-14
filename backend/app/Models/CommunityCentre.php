@@ -8,6 +8,10 @@ class CommunityCentre extends Model
 {
     protected $guarded = [];
 
+    protected $attributes = [
+        'booking_prefix' => 'ICCMS',
+    ];
+
     protected $casts = [
         'is_verified' => 'boolean',
         'base_price' => 'decimal:2',
@@ -16,6 +20,15 @@ class CommunityCentre extends Model
         'commission_rate' => 'decimal:2',
         'rating' => 'decimal:2',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $centre) {
+            if (blank($centre->working_area)) {
+                $centre->working_area = $centre->area;
+            }
+        });
+    }
 
     public function owner()
     {
@@ -46,6 +59,11 @@ class CommunityCentre extends Model
     public function foodMenus()
     {
         return $this->hasMany(FoodMenu::class, 'centre_id');
+    }
+
+    public function decorators()
+    {
+        return $this->hasMany(CentreDecorator::class, 'centre_id');
     }
 
     public function availabilitySlots()

@@ -26,6 +26,10 @@ class User extends Authenticatable
         'role',
         'status',
         'api_token',
+        'nid_number',
+        'area_scope',
+        'coordinator_permissions',
+        'caretaker_centre_id',
     ];
 
     /**
@@ -37,6 +41,7 @@ class User extends Authenticatable
         'password',
         'remember_token',
         'api_token',
+        'nid_number',
     ];
 
     /**
@@ -49,6 +54,47 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'nid_number' => 'encrypted',
+            'coordinator_permissions' => 'array',
+            'caretaker_centre_id' => 'integer',
         ];
+    }
+
+    public function coordinatorCentres()
+    {
+        return $this->belongsToMany(CommunityCentre::class, 'coordinator_centre', 'user_id', 'community_centre_id');
+    }
+
+    public function caretakerCentre()
+    {
+        return $this->belongsTo(CommunityCentre::class, 'caretaker_centre_id');
+    }
+
+    public function hasCoordinatorPermission(string $permission): bool
+    {
+        return in_array($this->role, ['project_coordinator', 'caretaker'], true)
+            && in_array($permission, $this->coordinator_permissions ?? [], true);
+    }
+
+    public function coordinatesCentre(int $centreId): bool
+    {
+        return in_array($this->role, ['project_coordinator', 'caretaker'], true)
+            && $this->assignedCentreIds()->contains($centreId);
+    }
+
+    public function assignedCentreIds()
+    {
+        $ids = $this->coordinatorCentres()->pluck('community_centres.id');
+        if ($this->role === 'caretaker' && $this->caretaker_centre_id) {
+            $ids->push($this->caretaker_centre_id);
+        }
+        return $ids->unique()->values();
+    }
+
+    public function scopeCaretakersForCentre($query, int $centreId)
+    {
+        return $query->where('role', 'caretaker')->where('status', 'active')
+            ->where(fn ($q) => $q->where('caretaker_centre_id', $centreId)
+                ->orWhereHas('coordinatorCentres', fn ($c) => $c->whereKey($centreId)));
     }
 }

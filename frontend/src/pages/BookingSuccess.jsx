@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Wallet, CheckCircle2, Pencil } from "lucide-react";
-import { getBooking, cancelBooking, initiatePayment, updateBookingDetails } from "../services/api";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Wallet, CheckCircle2, Pencil, Printer } from "lucide-react";
+import { getBooking, cancelBooking, initiatePayment, paymentAvailability, updateBookingDetails } from "../services/api";
 import { taka, sessionLabel } from "../lib/format";
 import { toast } from "../store/toastStore";
-
-const PAY_METHODS = ["bKash", "Nagad", "Card", "Bank transfer", "Cash"];
+import BookingSoftwareFeedback from "../components/BookingSoftwareFeedback";
+import Invoice from "../components/Invoice";
+import BookingLoadError from "../components/BookingLoadError";
+import { nextBookingPayment } from "../lib/bookingPayment";
 
 const STATUS_STYLES = {
   confirmed: "bg-emerald-100 text-emerald-700",
@@ -17,21 +19,37 @@ const STATUS_STYLES = {
 
 export default function BookingSuccess() {
   const { bookingNo } = useParams();
+  const [searchParams] = useSearchParams();
   const [booking, setBooking] = useState(null);
-  const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [loadRetry, setLoadRetry] = useState(0);
   const [showCancel, setShowCancel] = useState(false);
   const [reason, setReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState(PAY_METHODS[0]);
+  const [onlineAvailable, setOnlineAvailable] = useState(false);
   const [paying, setPaying] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const invoiceRef = useRef(null);
 
   useEffect(() => {
-    getBooking(bookingNo).then(setBooking).catch(() => setNotFound(true));
-  }, [bookingNo]);
+    let active = true;
+    setBooking(null);
+    setLoadError(null);
+    setPayOpen(false);
+    setEditOpen(false);
+    getBooking(bookingNo).then((value) => { if (active) setBooking(value); })
+      .catch((error) => { if (active) setLoadError({ status: error.response?.status }); });
+    return () => { active = false; };
+  }, [bookingNo, loadRetry]);
+
+  useEffect(() => {
+    let active = true;
+    paymentAvailability().then((value) => { if (active) setOnlineAvailable(value); }).catch(() => { if (active) setOnlineAvailable(false); });
+    return () => { active = false; };
+  }, [loadRetry]);
 
   // Estimated refund preview (mirrors backend day-based policy on amount paid).
   const refundEstimate = (b) => {
@@ -58,9 +76,10 @@ export default function BookingSuccess() {
     setEditForm({
       customer_name: booking.customer_name || "",
       customer_phone: booking.customer_phone || "",
-      customer_email: booking.customer_email || "",
       guest_count: booking.guest_count || "",
       event_type: booking.event_type || "",
+      event_manager_name: booking.event_manager_name || "",
+      event_manager_phone: booking.event_manager_phone || "",
     });
     setEditOpen(true);
   };
@@ -82,10 +101,8 @@ export default function BookingSuccess() {
   const doPayDue = async () => {
     setPaying(true);
     try {
-      const res = await initiatePayment({ booking_no: bookingNo, payment_method: payMethod, payment_option: "full" });
-      setBooking(res.data ?? res);
-      setPayOpen(false);
-      toast.success("Payment received. Your booking is now fully paid.");
+      const res = await initiatePayment({ booking_no: bookingNo, payment_option: nextBookingPayment(booking).option });
+      window.location.assign(res.redirect_url);
     } catch (e) {
       toast.error(e.response?.data?.message || "Payment could not be processed.");
     } finally {
@@ -93,35 +110,46 @@ export default function BookingSuccess() {
     }
   };
 
+  const printInvoice = () => {
+    const html = invoiceRef.current?.innerHTML;
+    if (!html) return;
+    const printWindow = window.open("", "_blank", "width=800,height=900");
+    if (!printWindow) { toast.error("Allow pop-ups to print your invoice."); return; }
+    const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')]
+      .map((node) => node.outerHTML).join("");
+    printWindow.document.write(`<!doctype html><html><head><title>Invoice ${booking.booking_no}</title>
+      ${styles}<style>@media print{.no-print{display:none}} body{font-family:ui-sans-serif,system-ui,sans-serif}</style>
+      </head><body class="p-8">${html}<script>window.onload=()=>{window.print()}</script></body></html>`);
+    printWindow.document.close();
+  };
+
   // Once a booking is confirmed/paid by the centre or admin it is locked in and
   // can no longer be self-cancelled by the customer.
   const canCancel = booking && !["confirmed", "paid", "cancelled", "completed", "refunded"].includes(booking.status);
-  const canPayDue = booking && booking.due_amount > 0 && !["cancelled", "completed", "refunded"].includes(booking.status);
+  const canPayDue = booking && onlineAvailable && booking.due_amount > 0 && !["cancelled", "completed", "refunded"].includes(booking.status);
   const canEdit = booking && !["cancelled", "completed", "refunded"].includes(booking.status);
 
-  if (notFound) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-20 text-center text-slate-500">
-        Booking not found.
-        <Link to="/centres" className="block mt-4 text-brand-700 font-semibold">Browse centres →</Link>
-      </div>
-    );
-  }
-  if (!booking) {
+  if (loadError) return <BookingLoadError status={loadError.status} subject="Booking" onRetry={() => setLoadRetry((value) => value + 1)} />;
+  if (!booking || booking.booking_no !== bookingNo) {
     return <div className="mx-auto max-w-3xl px-4 py-20 text-slate-400">Loading…</div>;
   }
 
+  const nextPayment = nextBookingPayment(booking);
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 py-12">
       <div className="text-center">
-        <div className="mx-auto h-16 w-16 rounded-full bg-emerald-100 grid place-items-center text-3xl">
-          ✓
+        <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full text-3xl ${booking.status === "confirmed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+          {booking.status === "confirmed" ? "✓" : <Wallet className="h-8 w-8" />}
         </div>
-        <h1 className="mt-4 text-3xl font-extrabold text-slate-900">Booking confirmed!</h1>
+        <h1 className="mt-4 text-3xl font-extrabold text-slate-900">{booking.status === "confirmed" ? "Booking confirmed!" : "Booking request submitted"}</h1>
         <p className="text-slate-500 mt-1">
-          Your booking request has been submitted and payment recorded.
+          {booking.status === "confirmed" ? "Your payment has been verified." : "Payment is not yet confirmed."}
         </p>
+        {searchParams.get("payment") === "pending" && <p className="mt-3 text-sm text-amber-700">The gateway result is pending verification. Please check this booking again shortly.</p>}
+        {searchParams.get("payment") === "unavailable" && <p className="mt-3 text-sm text-amber-700">Your booking was saved, but the payment gateway could not start. No payment has been recorded.</p>}
       </div>
+
+      <BookingSoftwareFeedback bookingNo={bookingNo} />
 
       <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -129,9 +157,12 @@ export default function BookingSuccess() {
             <div className="text-xs font-medium text-slate-500">Booking number</div>
             <div className="text-xl font-extrabold text-slate-900">{booking.booking_no}</div>
           </div>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[booking.status] || "bg-slate-100 text-slate-600"}`}>
-            {booking.status.replaceAll("_", " ")}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {Number(booking.paid_amount) > 0 && booking.payment && <button type="button" onClick={printInvoice} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700"><Printer className="h-4 w-4" />Invoice</button>}
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[booking.status] || "bg-slate-100 text-slate-600"}`}>
+              {booking.status.replaceAll("_", " ")}
+            </span>
+          </div>
         </div>
 
         <div className="mt-5 flex items-center justify-between">
@@ -151,9 +182,10 @@ export default function BookingSuccess() {
             <div className="grid gap-3 sm:grid-cols-2">
               <EditField label="Customer name" value={editForm.customer_name} onChange={(v) => setEditForm((f) => ({ ...f, customer_name: v }))} />
               <EditField label="Phone" value={editForm.customer_phone} onChange={(v) => setEditForm((f) => ({ ...f, customer_phone: v }))} />
-              <EditField label="Email" value={editForm.customer_email} onChange={(v) => setEditForm((f) => ({ ...f, customer_email: v }))} />
               <EditField label="Guests" type="number" value={editForm.guest_count} onChange={(v) => setEditForm((f) => ({ ...f, guest_count: v }))} />
               <EditField label="Event type" value={editForm.event_type} onChange={(v) => setEditForm((f) => ({ ...f, event_type: v }))} />
+              <EditField label="Event manager name" value={editForm.event_manager_name} onChange={(v) => setEditForm((f) => ({ ...f, event_manager_name: v }))} />
+              <EditField label="Event manager phone" type="tel" value={editForm.event_manager_phone} onChange={(v) => setEditForm((f) => ({ ...f, event_manager_phone: v }))} />
             </div>
             <div className="mt-3 flex gap-2">
               <button onClick={saveEdit} disabled={savingEdit} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
@@ -172,6 +204,8 @@ export default function BookingSuccess() {
             <Info label="First session" value={sessionLabel(booking.session_type)} />
             <Info label="Guests" value={booking.guest_count} />
             <Info label="Event type" value={booking.event_type || "—"} />
+            {booking.decorator_name && <><Info label="Decorator" value={booking.decorator_name} /><Info label="Decorator phone" value={booking.decorator_phone || "—"} /></>}
+            {(booking.event_manager_name || booking.event_manager_phone) && <><Info label="Event manager" value={booking.event_manager_name || "—"} /><Info label="Manager phone" value={booking.event_manager_phone || "—"} /></>}
             <Info label="Customer" value={booking.customer_name} />
             <Info label="Phone" value={booking.customer_phone} />
           </div>
@@ -200,7 +234,7 @@ export default function BookingSuccess() {
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-sm space-y-1.5">
           <Row label="Venue" value={booking.venue_amount} />
-          <Row label="Food" value={booking.food_amount} />
+          {Number(booking.food_amount) > 0 && <Row label="Food" value={booking.food_amount} />}
           <Row label="Service charge" value={booking.service_charge} />
           <Row label="VAT" value={booking.vat_amount} />
           <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-100">
@@ -226,9 +260,9 @@ export default function BookingSuccess() {
         </div>
 
         {booking.payment && (
-          <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm flex justify-between">
+          <div className="mt-4 flex min-w-0 flex-col gap-2 rounded-xl bg-slate-50 p-3 text-sm sm:flex-row sm:justify-between">
             <span className="text-slate-500">Paid via {booking.payment.payment_method}</span>
-            <span className="font-mono text-slate-600">{booking.payment.transaction_id}</span>
+            <span className="min-w-0 font-mono text-slate-600 [overflow-wrap:anywhere] sm:text-right">{booking.payment.transaction_id}</span>
           </div>
         )}
 
@@ -265,18 +299,7 @@ export default function BookingSuccess() {
             </div>
             {payOpen && (
               <div className="mt-4 border-t border-amber-200 pt-4">
-                <div className="text-sm font-semibold text-slate-700">Choose a payment method</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {PAY_METHODS.map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setPayMethod(m)}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${payMethod === m ? "bg-brand-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
+                <div className="text-sm font-semibold text-slate-700">{nextPayment.option === "advance" ? "Pay the selected advance via ekPay" : "Continue securely to ekPay"}</div>
                 <div className="mt-3 flex gap-2">
                   <button
                     onClick={doPayDue}
@@ -284,7 +307,7 @@ export default function BookingSuccess() {
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    {paying ? "Processing…" : `Pay ${taka(booking.due_amount)}`}
+                    {paying ? "Processing…" : `Pay ${taka(nextPayment.amount)}`}
                   </button>
                   <button
                     onClick={() => setPayOpen(false)}
@@ -342,6 +365,8 @@ export default function BookingSuccess() {
           </div>
         )}
       </div>
+
+      <div ref={invoiceRef} hidden aria-hidden="true"><Invoice booking={booking} centre={booking.centre} /></div>
 
       <div className="mt-6 flex justify-center gap-3">
         <Link to="/centres" className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">

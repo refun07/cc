@@ -6,19 +6,13 @@ import {
   ImagePlus, StickyNote, Trash2,
 } from "lucide-react";
 import { Undo2 } from "lucide-react";
-import { ownerUpdateBooking, initiatePayment, ownerUpload, ownerUpdateBookingAttachments, ownerRefundBooking } from "../../services/api";
+import { ownerUpdateBooking, recordOfflinePayment, ownerUpload, ownerUpdateBookingAttachments, ownerRefundBooking } from "../../services/api";
 import { taka, sessionLabel } from "../../lib/format";
 import { Badge } from "../admin/ui";
 import { toast } from "../../store/toastStore";
 import Invoice from "../../components/Invoice";
 
 const PAY_METHODS = [
-  { id: "bKash", color: "#E2136E" },
-  { id: "Nagad", color: "#EE7C1B" },
-  { id: "Rocket", color: "#8B3A93" },
-  { id: "Upay", color: "#0FA3E0" },
-  { id: "SSLCommerz", color: "#0B6E4F" },
-  { id: "Card", color: "#1A56DB" },
   { id: "Bank Transfer", color: "#475569" },
   { id: "Cash", color: "#0F172A" },
 ];
@@ -28,13 +22,15 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState("bKash");
+  const [payMethod, setPayMethod] = useState("Cash");
   const [payAmount, setPayAmount] = useState("");
   const [collecting, setCollecting] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
+  const [refundKey, setRefundKey] = useState(() => crypto.randomUUID());
+  const [collectionKey, setCollectionKey] = useState(() => crypto.randomUUID());
   const [uploading, setUploading] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteEditing, setNoteEditing] = useState(false);
@@ -50,6 +46,8 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
         customer_email: booking.customer_email || "",
         guest_count: booking.guest_count || 1,
         event_type: booking.event_type || "",
+        event_manager_name: booking.event_manager_name || "",
+        event_manager_phone: booking.event_manager_phone || "",
         adjustment_amount: booking.adjustment_amount || 0,
         adjustment_reason: booking.adjustment_reason || "",
       });
@@ -122,14 +120,15 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
     }
   };
 
-  const refundable = Math.max(Number(booking.paid_amount) - Number(booking.refunded_amount), 0);
+  const refundable = Math.max(Number(booking.refundable_amount ?? booking.paid_amount), 0);
   const doRefund = async () => {
     const amt = Number(refundAmount);
     if (!(amt > 0)) return toast.error("Enter a refund amount.");
     if (amt > refundable) return toast.error(`Max refundable is ${taka(refundable)}.`);
     setRefunding(true);
     try {
-      const updated = await ownerRefundBooking(booking.booking_no, { amount: amt, reason: refundReason || null });
+      const updated = await ownerRefundBooking(booking.booking_no, { amount: amt, reason: refundReason || null, request_key: refundKey });
+      setRefundKey(crypto.randomUUID());
       onUpdated(updated);
       setRefundOpen(false); setRefundAmount(""); setRefundReason("");
       toast.success(`Refund of ${taka(amt)} issued.`);
@@ -142,16 +141,20 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
 
   const collectPayment = async () => {
     const custom = Number(payAmount);
+    if (payAmount !== "" && (!Number.isFinite(custom) || custom <= 0 || custom > Number(booking.due_amount))) {
+      return toast.error("Payment must be greater than zero and cannot exceed the amount due.");
+    }
     const useCustom = payAmount !== "" && custom > 0 && custom < Number(booking.due_amount);
     setCollecting(true);
     try {
-      const res = await initiatePayment({
+      const res = await recordOfflinePayment({
         booking_no: booking.booking_no,
         payment_method: payMethod,
-        payment_option: "full",
+        request_key: collectionKey,
         ...(useCustom ? { custom_payment_amount: custom } : {}),
       });
-      onUpdated(res.data ?? res);
+      onUpdated(res);
+      setCollectionKey(crypto.randomUUID());
       setPayOpen(false);
       setPayAmount("");
       toast.success(`Payment of ${payMethod} recorded.`);
@@ -186,35 +189,35 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
           onClick={(e) => e.stopPropagation()}
           initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+          className="relative flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[92vh] sm:rounded-3xl"
           role="dialog" aria-modal="true"
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-display text-xl font-bold text-slate-900">{booking.booking_no}</h2>
+          <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6 sm:py-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="min-w-0 break-all font-display text-base font-bold text-slate-900 sm:text-xl">{booking.booking_no}</h2>
                 <Badge status={booking.status} />
               </div>
               <p className="text-xs text-slate-500">{mode === "edit" ? "Editing booking details" : "Booking details"}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 sm:shrink-0">
               {editable && mode === "view" && (
-                <button onClick={() => setMode("edit")} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                <button onClick={() => setMode("edit")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
               )}
-              <button onClick={printInvoice} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+              <button onClick={printInvoice} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">
                 <Printer className="h-3.5 w-3.5" /> Invoice
               </button>
-              <button onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-slate-400 hover:bg-slate-100">
+              <button onClick={onClose} aria-label="Close" className="ml-auto grid h-11 w-11 place-items-center rounded-full text-slate-400 hover:bg-slate-100 sm:ml-0">
                 <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {mode === "view" ? (
               <div className="grid gap-6 lg:grid-cols-2">
                <div>
@@ -224,6 +227,7 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
                   <Detail icon={Phone} label="Phone" value={booking.customer_phone} />
                   <Detail icon={Mail} label="Email" value={booking.customer_email || "—"} />
                   <Detail icon={Tag} label="Event type" value={booking.event_type || "—"} />
+                  {(booking.event_manager_name || booking.event_manager_phone) && <><Detail icon={Tag} label="Event manager" value={booking.event_manager_name || "—"} /><Detail icon={Phone} label="Manager phone" value={booking.event_manager_phone || "—"} /></>}
                 </Section>
 
                 {/* Event */}
@@ -232,6 +236,7 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
                   <Detail icon={Users} label="Guests" value={booking.guest_count} />
                   <Detail icon={CalendarDays} label="Date" value={`${booking.event_date}${booking.date_count > 1 ? ` +${booking.date_count - 1} more` : ""}`} />
                   <Detail icon={Clock} label="Session" value={mixed ? "Mixed sessions" : sessionLabel(booking.session_type)} />
+                  {booking.decorator_name && <><Detail icon={Tag} label="Decorator" value={booking.decorator_name} /><Detail icon={Phone} label="Decorator phone" value={booking.decorator_phone || "—"} /></>}
                 </Section>
 
                 {booking.booking_dates?.length > 1 && (
@@ -265,10 +270,10 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
 
                <div className="space-y-4">
                 {/* Cost */}
-                <div className="rounded-2xl bg-slate-50 p-5 text-sm ring-1 ring-slate-200/70">
+                <div className="rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200/70 sm:p-5">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Cost breakdown</div>
                   <Line label="Venue" value={booking.venue_amount} />
-                  <Line label="Food" value={booking.food_amount} />
+                  {Number(booking.food_amount) > 0 && <Line label="Food" value={booking.food_amount} />}
                   <Line label="Service charge" value={booking.service_charge} />
                   <Line label="VAT" value={booking.vat_amount} />
                   {booking.adjustment_amount !== 0 && (
@@ -290,20 +295,20 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
                 {/* Manage payment */}
                 {editable && booking.due_amount > 0 && (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-500 text-white"><Wallet className="h-5 w-5" /></span>
                         <div>
                           <div className="font-semibold text-slate-900">Collect payment</div>
-                          <div className="text-xs text-slate-500">Outstanding <span className="font-semibold text-amber-700">{taka(booking.due_amount)}</span></div>
+                          <div className="text-xs text-slate-500"><span>Outstanding</span> <span className="font-semibold text-amber-700">{taka(booking.due_amount)}</span></div>
                         </div>
                       </div>
-                      {!payOpen && <button onClick={() => setPayOpen(true)} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Record payment</button>}
+                      {!payOpen && <button onClick={() => setPayOpen(true)} className="min-h-11 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700">Record payment</button>}
                     </div>
                     {payOpen && (
                       <div className="mt-3 border-t border-amber-200 pt-3">
-                        <div className="text-xs font-semibold text-slate-600">Payment method</div>
-                        <div className="mt-2 grid grid-cols-4 gap-1.5">
+                        <div className="text-xs font-semibold text-slate-600">Offline payment received</div>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
                           {PAY_METHODS.map((m) => (
                             <button key={m.id} onClick={() => setPayMethod(m.id)}
                               className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[10px] font-semibold transition ${payMethod === m.id ? "border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-200" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}>
@@ -330,15 +335,15 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
                 {/* Refund */}
                 {refundable > 0 && (
                   <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         <span className="grid h-9 w-9 place-items-center rounded-lg bg-rose-500 text-white"><Undo2 className="h-5 w-5" /></span>
                         <div>
                           <div className="font-semibold text-slate-900">Issue refund</div>
-                          <div className="text-xs text-slate-500">Up to <span className="font-semibold text-rose-700">{taka(refundable)}</span> refundable</div>
+                          <div className="text-xs text-slate-500"><span>Up to</span> <span className="font-semibold text-rose-700">{taka(refundable)}</span> <span>refundable</span></div>
                         </div>
                       </div>
-                      {!refundOpen && <button onClick={() => { setRefundOpen(true); setRefundAmount(String(refundable)); }} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">Refund</button>}
+                      {!refundOpen && <button onClick={() => { setRefundOpen(true); setRefundAmount(String(refundable)); }} className="min-h-11 rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700">Refund</button>}
                     </div>
                     {refundOpen && (
                       <div className="mt-3 border-t border-rose-200 pt-3 space-y-2">
@@ -361,7 +366,7 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
 
                 {booking.payment?.transaction_id && (
                   <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
-                    Last payment · {booking.payment.payment_method} · <span className="font-mono">{booking.payment.transaction_id}</span>
+                    <span>Last payment</span> · {booking.payment.payment_method} · <span className="font-mono">{booking.payment.transaction_id}</span>
                   </div>
                 )}
 
@@ -423,6 +428,8 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
                 <EField label="Email" value={form.customer_email} onChange={(v) => setForm((f) => ({ ...f, customer_email: v }))} />
                 <EField label="Guests" type="number" value={form.guest_count} onChange={(v) => setForm((f) => ({ ...f, guest_count: v }))} />
                 <EField label="Event type" value={form.event_type} onChange={(v) => setForm((f) => ({ ...f, event_type: v }))} className="sm:col-span-2" />
+                <EField label="Event manager name" value={form.event_manager_name} onChange={(v) => setForm((f) => ({ ...f, event_manager_name: v }))} />
+                <EField label="Event manager phone" type="tel" value={form.event_manager_phone} onChange={(v) => setForm((f) => ({ ...f, event_manager_phone: v }))} />
                 <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                   <div className="text-xs font-semibold text-slate-600">Price adjustment (discount / surcharge)</div>
                   <p className="mt-0.5 text-xs text-slate-400">Use a negative value for a discount (e.g. -2000), positive for a surcharge.</p>
@@ -442,9 +449,9 @@ export default function OwnerBookingDetailModal({ booking, centre, onClose, onUp
 
           {/* Footer */}
           {mode === "edit" && (
-            <div className="flex gap-3 border-t border-slate-100 px-6 py-4">
-              <button onClick={() => setMode("view")} className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
-              <button onClick={save} disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+          <div className="flex gap-3 border-t border-slate-100 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
+              <button onClick={() => setMode("view")} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 sm:px-5">Cancel</button>
+              <button onClick={save} disabled={saving} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 sm:px-5">
                 <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save changes"}
               </button>
             </div>
@@ -473,17 +480,17 @@ function Section({ title, icon: Icon, children }) {
 }
 function Detail({ icon: Icon, label, value }) {
   return (
-    <div>
-      <div className="inline-flex items-center gap-1.5 text-xs text-slate-400"><Icon className="h-3.5 w-3.5" /> {label}</div>
-      <div className="mt-0.5 font-semibold text-slate-900">{value}</div>
+    <div className="min-w-0">
+      <div className="inline-flex items-center gap-1.5 text-xs text-slate-400"><Icon className="h-3.5 w-3.5 shrink-0" /> {label}</div>
+      <div className="mt-0.5 break-words font-semibold text-slate-900">{value}</div>
     </div>
   );
 }
 function Line({ label, value }) {
   return (
-    <div className="flex justify-between text-slate-700">
-      <span className="font-medium">{label}</span>
-      <span className="font-semibold tabular-nums text-slate-900">{taka(value)}</span>
+    <div className="flex justify-between gap-2 text-slate-700">
+      <span className="min-w-0 break-words font-medium">{label}</span>
+      <span className="shrink-0 font-semibold tabular-nums text-slate-900">{taka(value)}</span>
     </div>
   );
 }

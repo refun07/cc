@@ -3,13 +3,14 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Building2, CalendarCheck, Users, CreditCard,
   LogOut, Lock, Phone, ShieldCheck, ExternalLink, BarChart3,
-  HandCoins, CalendarRange, SlidersHorizontal, LayoutTemplate,
+  HandCoins, CalendarRange, SlidersHorizontal, LayoutTemplate, MessageSquare, Ticket, BookOpen, ClipboardCheck, Truck,
 } from "lucide-react";
 import { loginAccount } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import logo from "../../assets/dscc_3.jpg";
 import NotificationBell from "../../components/NotificationBell";
 import LanguageSwitcher from "../../components/LanguageSwitcher";
+import PortalMobileNavigation from "../../components/PortalMobileNavigation";
 
 const NAV = [
   ["/admin", "Dashboard", LayoutDashboard, true],
@@ -20,8 +21,13 @@ const NAV = [
   ["/admin/payments", "Payments", CreditCard],
   ["/admin/settlements", "Settlements", HandCoins],
   ["/admin/reports", "Reports", BarChart3],
+  ["/admin/feedback", "Feedback", MessageSquare],
   ["/admin/homepage", "Home page", LayoutTemplate],
+  ["/admin/guides", "Booking guides", BookOpen],
   ["/admin/settings", "Payroll rules", SlidersHorizontal],
+  ["/admin/tickets", "Service requests", Ticket],
+  ["/admin/event-reports", "Event reports", ClipboardCheck],
+  ["/admin/waste-delays", "Waste pickup delays", Truck],
 ];
 
 export default function AdminLayout() {
@@ -38,11 +44,11 @@ export default function AdminLayout() {
             <img src={logo} alt="" className="h-full w-full rounded object-cover" />
           </span>
           <div>
-            <div className="text-sm font-bold text-white">DSCC Admin</div>
+            <div className="text-sm font-bold text-white">ICCMS Admin</div>
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Super Admin</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3" style={{ scrollbarColor: "#475569 #0f172a", scrollbarWidth: "thin" }}>
           {NAV.map(([to, label, Icon, end]) => (
             <NavLink
               key={to}
@@ -67,33 +73,25 @@ export default function AdminLayout() {
 
       {/* Main */}
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-5 py-3 backdrop-blur">
-          {/* mobile nav */}
-          <nav className="flex gap-1 overflow-x-auto lg:hidden">
-            {NAV.map(([to, label, Icon, end]) => (
-              <NavLink key={to} to={to} end={end}
-                className={({ isActive }) => `flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium ${isActive ? "bg-brand-600 text-white" : "text-slate-500"}`}>
-                <Icon className="h-4 w-4" /> {label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b border-slate-200 bg-white/95 px-3 backdrop-blur sm:px-5">
+          <PortalMobileNavigation items={NAV} title="ICCMS Admin" tone="slate" />
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <LanguageSwitcher tone="dark" />
             <NotificationBell dark={false} />
-            <div className="text-right">
+            <div className="hidden text-right md:block">
               <div className="text-sm font-semibold text-slate-900">{user.name}</div>
               <div className="text-[11px] text-slate-400">{user.phone}</div>
             </div>
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-bold text-white">
+            <span className="hidden h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-bold text-white sm:grid">
               {user.name[0]?.toUpperCase()}
             </span>
-            <button onClick={logout} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Sign out">
+            <button onClick={logout} className="grid h-11 w-11 place-items-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" aria-label="Sign out">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>
 
-        <main className="p-5 sm:p-7">
+        <main className="min-w-0 p-3 sm:p-7">
           <Outlet />
         </main>
       </div>
@@ -132,12 +130,13 @@ function AdminLogin() {
     <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
       <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px,#fff 1px,transparent 0)", backgroundSize: "22px 22px" }} />
       <div className="relative w-full max-w-sm rounded-3xl bg-white p-7 shadow-2xl">
+        <div className="mb-2 flex justify-end"><LanguageSwitcher /></div>
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 ring-1 ring-slate-200">
             <img src={logo} alt="" className="h-full w-full rounded-xl object-cover" />
           </span>
           <div>
-            <div className="font-display text-xl font-bold text-slate-900">DSCC Admin</div>
+            <div className="font-display text-xl font-bold text-slate-900">ICCMS Admin</div>
             <div className="inline-flex items-center gap-1 text-xs text-slate-400"><ShieldCheck className="h-3.5 w-3.5" /> Super Admin Panel</div>
           </div>
         </div>
@@ -145,18 +144,18 @@ function AdminLogin() {
         <form onSubmit={submit} className="mt-6 space-y-3">
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 focus-within:border-brand-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
             <Phone className="h-4 w-4 text-slate-400" />
-            <input value={form.phone} onChange={set("phone")} className="auth-input" placeholder="Admin mobile number" required />
+            <input type="tel" inputMode="tel" autoComplete="username" aria-label="Admin mobile number" value={form.phone} onChange={set("phone")} className="auth-input" placeholder="Admin mobile number" required />
           </div>
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 focus-within:border-brand-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
             <Lock className="h-4 w-4 text-slate-400" />
-            <input value={form.password} onChange={set("password")} type="password" className="auth-input" placeholder="Password" required />
+            <input value={form.password} onChange={set("password")} type="password" autoComplete="current-password" aria-label="Password" className="auth-input" placeholder="Password" required />
           </div>
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
           <button disabled={busy} className="w-full rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60">
             {busy ? "Signing in…" : "Sign in to Admin"}
           </button>
         </form>
-        <p className="mt-4 text-center text-xs text-slate-400">Seeded: 01700000000 · password</p>
+        {import.meta.env.DEV && <p className="mt-4 text-center text-xs text-slate-400">Seeded: 01700000000 · password</p>}
       </div>
     </div>
   );

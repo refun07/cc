@@ -28,7 +28,7 @@ export default function AdminBookings() {
 
   return (
     <div>
-      <PageHead title="Bookings" subtitle="Every booking across the marketplace.">
+      <PageHead title="Bookings" subtitle="Every booking in ICCMS DSCC.">
         <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
           <Plus className="h-4 w-4" /> New booking
         </button>

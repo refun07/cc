@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Wallet, CalendarCheck, Clock, CalendarDays, UtensilsCrossed, CheckCircle2,
+  Wallet, CalendarCheck, Clock, CalendarDays, CheckCircle2,
   ArrowRight, ArrowUpRight, Star, CalendarRange, Store, MapPin, TrendingUp, Receipt, Percent,
 } from "lucide-react";
 import { ownerDashboard } from "../../services/api";
@@ -31,7 +31,6 @@ export default function OwnerDashboard() {
     { icon: TrendingUp, label: "Completed", value: s.completed, tint: "bg-blue-50 text-blue-600" },
     { icon: Receipt, label: "VAT collected", value: taka(s.vat), tint: "bg-indigo-50 text-indigo-600" },
     { icon: Percent, label: "Service charge (tax)", value: taka(s.service_charge), tint: "bg-violet-50 text-violet-600" },
-    { icon: UtensilsCrossed, label: "Food menus", value: s.menus, tint: "bg-amber-50 text-amber-600" },
     { icon: Wallet, label: "Outstanding due", value: taka(s.due_amount), tint: "bg-rose-50 text-rose-600" },
   ];
 
@@ -149,7 +148,7 @@ export default function OwnerDashboard() {
             <div className="grid grid-cols-2 gap-3 p-4">
               <QuickLink to="/owner/bookings" icon={CalendarCheck} label="Bookings" />
               <QuickLink to="/owner/availability" icon={CalendarRange} label="Availability" />
-              <QuickLink to="/owner/menus" icon={UtensilsCrossed} label="Food menus" />
+              <QuickLink to="/owner/reports" icon={TrendingUp} label="Reports" />
               <QuickLink to="/owner/profile" icon={Store} label="Venue profile" />
             </div>
           </Card>

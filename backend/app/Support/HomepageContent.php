@@ -18,10 +18,10 @@ class HomepageContent
     {
         return [
             'hero' => [
-                'badge' => 'Dhaka South City Corporation · Official Marketplace',
+                'badge' => 'ICCMS · DSCC',
                 'title_lead' => 'Your event deserves the',
                 'title_highlight' => 'perfect venue',
-                'subtitle' => 'Book verified DSCC community centres for weddings, corporate events & gatherings — full or half day, with food menus, local payments and built-in zero waste management.',
+                'subtitle' => 'Book verified ICCMS community centres for weddings, corporate events & gatherings — full or half day, with decorator contacts, local payments and built-in zero waste management.',
                 'search_placeholder' => 'Search by centre name or area…',
                 'trust_badges' => ['100% verified venues', 'Local payment support', 'Zero waste ready'],
             ],
@@ -32,27 +32,29 @@ class HomepageContent
                 ['label' => 'Tonnes Recycled', 'value' => 32, 'suffix' => 'T', 'icon' => 'Recycle'],
             ],
             'features_heading' => 'Everything for a smooth event',
-            'features_subheading' => 'One marketplace serving citizens, centre owners and DSCC admin.',
+            'features_subheading' => 'ICCMS serves citizens, centre owners and DSCC administrators.',
             'features' => [
-                ['icon' => 'ShieldCheck', 'title' => 'Verified Centres', 'description' => 'Every DSCC centre is verified with trade license & fire safety clearance.'],
+                ['icon' => 'ShieldCheck', 'title' => 'Verified Centres', 'description' => 'Every ICCMS centre is verified with trade license & fire safety clearance.'],
                 ['icon' => 'CalendarDays', 'title' => 'Full / Half Day', 'description' => 'Book the entire day or just a morning or evening session.'],
-                ['icon' => 'UtensilsCrossed', 'title' => 'Food Menus', 'description' => 'Bangla, premium wedding, corporate or vegetarian packages.'],
-                ['icon' => 'Wallet', 'title' => 'Local Payments', 'description' => 'bKash, Nagad, Rocket, Upay, SSLCommerz, card & bank transfer.'],
-                ['icon' => 'Boxes', 'title' => 'Owner Tools', 'description' => 'Inventory, HRM, payroll & expense management for owners.'],
+                ['icon' => 'Phone', 'title' => 'Decorator Contact', 'description' => 'Find the decorator contact for your chosen centre.'],
+                ['icon' => 'Wallet', 'title' => 'Local Payments', 'description' => 'Available online payment methods are shown on the ekPay checkout page.'],
                 ['icon' => 'Recycle', 'title' => 'Zero Waste', 'description' => 'Event waste routed to verified recycling & compost partners.'],
             ],
             'steps_heading' => 'How it works',
             'steps' => [
-                ['title' => 'Browse & filter', 'description' => 'Search verified centres by area, date, capacity and budget.'],
-                ['title' => 'Pick session & menu', 'description' => 'Choose full or half day and a food package for your guests.'],
-                ['title' => 'Review & pay', 'description' => 'See a transparent breakdown with VAT, then pay locally.'],
-                ['title' => 'Get confirmed', 'description' => 'Receive a booking number and track your event status.'],
+                ['title' => 'Browse centres', 'description' => 'Search by area and capacity; compare reviews and decorator contacts.'],
+                ['title' => 'Sign in by phone', 'description' => 'Register with an SMS code or sign in using your mobile number.'],
+                ['title' => 'Choose your booking', 'description' => 'Pick date, floor and session; add guests and organiser details. NID is needed only on your first booking.'],
+                ['title' => 'Review & reserve', 'description' => 'Check charges, choose pay later or online payment when available, then track your booking.'],
+            ],
+            'footer_links' => [
+                ['label' => 'Dhaka South City Corporation', 'label_bn' => 'ঢাকা দক্ষিণ সিটি করপোরেশন', 'url' => 'https://dscc.gov.bd/'],
             ],
         ];
     }
 
     /** Keys holding ordered lists — these replace wholesale, never merge by index. */
-    private const LISTS = ['stats', 'features', 'steps'];
+    private const LISTS = ['stats', 'features', 'steps', 'footer_links'];
 
     /** Stored content merged over the defaults. */
     public static function get(): array

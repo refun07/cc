@@ -5,7 +5,7 @@ import { PageHead, Card, Loading } from "./ui";
 import { toast } from "../../store/toastStore";
 import { askConfirm } from "../../store/confirmStore";
 
-const ICON_CHOICES = ["ShieldCheck", "CalendarDays", "UtensilsCrossed", "Wallet", "Boxes", "Recycle", "MapPin", "Leaf", "TrendingUp", "Users", "Star", "CheckCircle2"];
+const ICON_CHOICES = ["ShieldCheck", "CalendarDays", "Phone", "UtensilsCrossed", "Wallet", "Boxes", "Recycle", "MapPin", "Leaf", "TrendingUp", "Users", "Star", "CheckCircle2"];
 
 export default function AdminHomepage() {
   const [content, setContent] = useState(null);
@@ -129,6 +129,20 @@ export default function AdminHomepage() {
               </div>
             ))}
             {(content.steps || []).length < 6 && <AddBtn onClick={() => addRow("steps", { title: "New step", description: "" })}>Add step</AddBtn>}
+          </div>
+        </Card>
+
+        <Card title="City Corporation links">
+          <div className="space-y-3 p-5">
+            {(content.footer_links || []).map((link, i) => (
+              <div key={i} className="grid gap-2 border-b border-slate-100 pb-3 sm:grid-cols-[1fr_1fr_2fr_44px]">
+                <F label="Link text (English)"><input className="input" required maxLength={80} value={link.label} onChange={(e) => setList("footer_links", i, "label", e.target.value)} /></F>
+                <F label="Link text (Bangla)"><input className="input" maxLength={80} value={link.label_bn || ""} onChange={(e) => setList("footer_links", i, "label_bn", e.target.value)} /></F>
+                <F label="Website URL"><input type="url" className="input" required maxLength={1000} placeholder="https://" value={link.url} onChange={(e) => setList("footer_links", i, "url", e.target.value)} /></F>
+                <div className="flex items-end"><IconBtn onClick={() => removeRow("footer_links", i)} /></div>
+              </div>
+            ))}
+            {(content.footer_links || []).length < 8 && <AddBtn onClick={() => addRow("footer_links", { label: "", label_bn: "", url: "" })}>Add link</AddBtn>}
           </div>
         </Card>
 

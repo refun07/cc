@@ -11,6 +11,7 @@ use App\Models\Booking;
 use App\Models\CentreFacility;
 use App\Models\CentreFloor;
 use App\Models\CentreImage;
+use App\Models\CentreDecorator;
 use App\Models\CommunityCentre;
 use App\Models\Employee;
 use App\Models\Expense;
@@ -95,6 +96,10 @@ class OwnerController extends Controller
             ->latest()
             ->limit(100)
             ->get();
+        $caretakerCentreIds = \App\Models\User::where('role', 'caretaker')->where('status', 'active')
+            ->get()->flatMap(fn ($user) => $user->assignedCentreIds())->unique()->all();
+        $rows->each(fn ($booking) => $booking->setAttribute('caretaker_assigned',
+            in_array($booking->centre_id, $caretakerCentreIds, true)));
 
         return BookingResource::collection($rows);
     }
@@ -111,6 +116,8 @@ class OwnerController extends Controller
             'session_type' => ['required', 'in:full_day,half_day_morning,half_day_evening'],
             'guest_count' => ['required', 'integer', 'min:1'],
             'event_type' => ['nullable', 'string', 'max:255'],
+            'event_manager_name' => ['nullable', 'required_with:event_manager_phone', 'string', 'max:255'],
+            'event_manager_phone' => ['nullable', 'required_with:event_manager_name', 'regex:/^01[0-9]{9}$/'],
             'food_selections' => ['nullable', 'array'],
             'food_selections.*.food_menu_id' => ['required', 'integer', 'distinct'],
             'food_selections.*.quantity' => ['nullable', 'integer', 'min:1'],
@@ -119,7 +126,7 @@ class OwnerController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'payment_option' => ['nullable', 'in:full,advance'],
             'mark_paid' => ['nullable', 'boolean'],
-            'payment_method' => ['nullable', 'string', 'max:50'],
+            'payment_method' => ['nullable', 'in:Cash,Bank Transfer'],
             'custom_payment_amount' => ['nullable', 'numeric', 'gt:0'],
             'booking_dates' => ['nullable', 'array', 'min:1', 'max:30'],
             'booking_dates.*.date' => ['required', 'date', 'after_or_equal:today', 'distinct'],
@@ -158,6 +165,8 @@ class OwnerController extends Controller
             'customer_email' => ['nullable', 'email', 'max:255'],
             'guest_count' => ['required', 'integer', 'min:1'],
             'event_type' => ['nullable', 'string', 'max:255'],
+            'event_manager_name' => ['nullable', 'required_with:event_manager_phone', 'string', 'max:255'],
+            'event_manager_phone' => ['nullable', 'required_with:event_manager_name', 'regex:/^01[0-9]{9}$/'],
             'adjustment_amount' => ['nullable', 'numeric', 'between:-1000000,1000000'],
             'adjustment_reason' => ['nullable', 'string', 'max:255'],
         ]);
@@ -180,6 +189,8 @@ class OwnerController extends Controller
             'customer_email' => $data['customer_email'] ?? null,
             'guest_count' => $data['guest_count'],
             'event_type' => $data['event_type'] ?? null,
+            'event_manager_name' => $data['event_manager_name'] ?? null,
+            'event_manager_phone' => $data['event_manager_phone'] ?? null,
             'adjustment_amount' => $adjustment,
             'adjustment_reason' => $data['adjustment_reason'] ?? null,
             'total_amount' => $total,
@@ -215,12 +226,13 @@ class OwnerController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0'],
             'reason' => ['nullable', 'string', 'max:500'],
+            'request_key' => ['required', 'uuid'],
         ]);
 
         $ids = $this->centres($request)->pluck('id');
         $booking = Booking::where('booking_no', $bookingNo)->whereIn('centre_id', $ids)->with('payment')->firstOrFail();
 
-        $booking = $this->bookings->refund($booking, (float) $data['amount'], $data['reason'] ?? null);
+        $booking = $this->bookings->refund($booking, (float) $data['amount'], $data['reason'] ?? null, $data['request_key']);
 
         \App\Services\Notify::send($booking->user_id, 'Refund issued',
             "A refund of {$data['amount']} was issued for booking {$booking->booking_no}.", 'payment', '/my-bookings');
@@ -236,13 +248,26 @@ class OwnerController extends Controller
         ]);
 
         $ids = $this->centres($request)->pluck('id');
-        $booking = Booking::where('booking_no', $bookingNo)->whereIn('centre_id', $ids)->firstOrFail();
+        $booking = Booking::where('booking_no', $bookingNo)->whereIn('centre_id', $ids)
+            ->with('bookingDates')->firstOrFail();
 
         if ($data['action'] === 'cancel') {
             $booking = $this->bookings->cancelAndRefund($booking, $data['reason'] ?? 'Cancelled by centre');
             \App\Services\Notify::send($booking->user_id, 'Booking cancelled',
                 "Your booking {$booking->booking_no} was cancelled. Refund: {$booking->refunded_amount}.", 'booking', '/my-bookings');
         } else {
+            if ($data['action'] === 'complete') {
+                abort_if(\App\Models\User::caretakersForCentre($booking->centre_id)->exists(), 422,
+                    'The assigned caretaker must report event completion.');
+                $lastDate = $booking->bookingDates->max(fn ($slot) => $slot->date?->format('Y-m-d'))
+                    ?? $booking->event_date?->format('Y-m-d');
+                abort_unless(in_array($booking->status, ['confirmed', 'paid'], true), 422,
+                    'Only confirmed or paid bookings can be completed.');
+                abort_unless((float) $booking->due_amount <= 0, 422,
+                    'Settle the remaining balance before completing this booking.');
+                abort_unless($lastDate !== null && $lastDate <= now('Asia/Dhaka')->toDateString(), 422,
+                    'The final event date has not arrived yet.');
+            }
             $new = $data['action'] === 'confirm' ? 'confirmed' : 'completed';
             $booking->update(['status' => $new]);
             \App\Services\Notify::send($booking->user_id, 'Booking '.$new,
@@ -250,6 +275,56 @@ class OwnerController extends Controller
         }
 
         return new BookingResource($booking->load('centre', 'payment', 'foodItems', 'bookingDates'));
+    }
+
+    // ---- Centre decorators ----
+    public function decorators(Request $request)
+    {
+        $centres = $this->centres($request)->orderBy('name')->get(['id', 'name', 'area']);
+
+        return response()->json([
+            'centres' => $centres,
+            'data' => CentreDecorator::whereIn('centre_id', $centres->pluck('id'))->orderBy('name')->get(),
+        ]);
+    }
+
+    public function storeDecorator(Request $request)
+    {
+        $data = $this->validateDecorator($request);
+        $data['centre_id'] = $this->ownCentreId($request, $data['centre_id']);
+
+        return response()->json(['data' => CentreDecorator::create($data)], 201);
+    }
+
+    public function updateDecorator(Request $request, CentreDecorator $decorator)
+    {
+        $this->ownCentreId($request, $decorator->centre_id);
+        $data = $this->validateDecorator($request);
+        $data['centre_id'] = $this->ownCentreId($request, $data['centre_id']);
+        $decorator->update($data);
+
+        return response()->json(['data' => $decorator]);
+    }
+
+    public function deleteDecorator(Request $request, CentreDecorator $decorator)
+    {
+        $this->ownCentreId($request, $decorator->centre_id);
+        $decorator->delete();
+
+        return response()->json(['message' => 'Decorator removed.']);
+    }
+
+    protected function validateDecorator(Request $request): array
+    {
+        return $request->validate([
+            'centre_id' => ['required', 'integer', 'exists:community_centres,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'regex:/^01[0-9]{9}$/'],
+            'service_area' => ['required', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'status' => ['required', 'in:active,inactive'],
+        ]);
     }
 
     // ---- Food menus ----
@@ -417,7 +492,7 @@ class OwnerController extends Controller
             'base_price' => ['sometimes', 'numeric', 'min:0'],
             'half_day_price' => ['sometimes', 'numeric', 'min:0'],
             'full_day_price' => ['sometimes', 'numeric', 'min:0'],
-            'virtual_tour_url' => ['nullable', 'url'],
+            'virtual_tour_url' => ['nullable', 'url:http,https', 'max:255'],
             'booking_prefix' => ['sometimes', 'nullable', 'string', 'regex:/^[A-Za-z0-9]{2,12}$/'],
         ], [
             'booking_prefix.regex' => 'Prefix must be 2–12 letters or numbers, no spaces.',
@@ -822,7 +897,8 @@ class OwnerController extends Controller
 
         // Reuse the linked user, otherwise find by phone, otherwise create new.
         $user = $employee->user_id ? User::find($employee->user_id) : User::where('phone', $employee->phone)->first();
-        if ($user && $user->role !== 'staff') {
+        if ($user && ($user->role !== 'staff' || (int) $employee->user_id !== (int) $user->id
+            || Employee::where('user_id', $user->id)->where('id', '!=', $employee->id)->exists())) {
             abort(422, 'This phone number already belongs to another account.');
         }
         if (! $user) {
@@ -830,7 +906,7 @@ class OwnerController extends Controller
         }
         $user->name = $employee->name;
         $user->password = Hash::make($data['password']);
-        $user->api_token = $user->api_token ?: Str::random(72);
+        $user->api_token = Str::random(72);
         $user->save();
 
         $employee->update(['user_id' => $user->id]);
@@ -1257,16 +1333,27 @@ class OwnerController extends Controller
     public function accounting(Request $request)
     {
         $ids = $this->centres($request)->pluck('id');
-        $paid = ['paid', 'confirmed', 'completed'];
-
-        $income = Booking::whereIn('centre_id', $ids)->whereIn('status', $paid)->get(['booking_no', 'paid_amount', 'event_date', 'created_at', 'customer_name']);
+        $income = \App\Services\PaymentReceipts::reportQuery()->whereIn('payments.status', ['paid', 'refunded'])
+            ->whereHas('booking', fn ($q) => $q->whereIn('centre_id', $ids))->with('booking.payment')->get();
+        $refunds = DB::table('payment_refunds')->join('bookings', 'bookings.id', '=', 'payment_refunds.booking_id')
+            ->whereIn('bookings.centre_id', $ids)->select('payment_refunds.*', 'bookings.booking_no')->get();
         $expenses = Expense::whereIn('centre_id', $ids)->get();
         $payrolls = Payroll::whereIn('centre_id', $ids)->where('status', 'paid')->with('employee:id,name')->get();
         $manual = \App\Models\LedgerEntry::whereIn('centre_id', $ids)->get();
 
         $ledger = collect();
-        foreach ($income as $b) {
-            $ledger->push(['date' => optional($b->created_at)->toDateString(), 'type' => 'income', 'category' => 'Booking', 'ref' => $b->booking_no, 'desc' => $b->customer_name, 'amount' => (float) $b->paid_amount]);
+        foreach ($income as $receipt) {
+            $ledger->push(['date' => $receipt->paid_at?->toDateString(), 'type' => 'income', 'category' => 'Booking',
+                'ref' => $receipt->booking?->booking_no, 'desc' => $receipt->transaction_id,
+                'amount' => (float) $receipt->amount, 'source' => $receipt->source]);
+            if ($receipt->id < 0 && (float) $receipt->refunded_amount > 0) {
+                $refunds->push((object) ['created_at' => $receipt->booking?->payment?->refunded_at,
+                    'booking_no' => $receipt->booking?->booking_no, 'reason' => 'Legacy aggregate refund', 'amount' => $receipt->refunded_amount]);
+            }
+        }
+        foreach ($refunds as $refund) {
+            $ledger->push(['date' => $refund->created_at ? \Illuminate\Support\Carbon::parse($refund->created_at)->toDateString() : null,
+                'type' => 'expense', 'category' => 'Refund', 'ref' => $refund->booking_no, 'desc' => $refund->reason, 'amount' => (float) $refund->amount]);
         }
         foreach ($expenses->where('status', 'paid') as $e) {
             $ledger->push(['date' => $e->expense_date, 'type' => 'expense', 'category' => $e->category, 'ref' => $e->reference_no, 'desc' => $e->title.($e->vendor ? " · {$e->vendor}" : ''), 'amount' => (float) $e->amount]);
@@ -1280,13 +1367,16 @@ class OwnerController extends Controller
 
         $manualIncome = (float) $manual->where('type', 'income')->sum('amount');
         $manualExpense = (float) $manual->where('type', 'expense')->sum('amount');
-        $totalIncome = (float) $income->sum('paid_amount') + $manualIncome;
+        $totalIncome = (float) $income->sum('amount') + $manualIncome;
         $expensePaid = (float) $expenses->where('status', 'paid')->sum('amount');
         $payrollPaid = (float) $payrolls->sum('net_salary');
-        $totalExpense = $expensePaid + $payrollPaid + $manualExpense;
+        $totalExpense = $expensePaid + $payrollPaid + $manualExpense + (float) $refunds->sum('amount');
 
         // category breakdown for expenses + payroll + manual expenses
         $byCategory = $expenses->where('status', 'paid')->groupBy('category')->map(fn ($g) => (float) $g->sum('amount'));
+        if ($refunds->isNotEmpty()) {
+            $byCategory['Refund'] = ($byCategory['Refund'] ?? 0) + (float) $refunds->sum('amount');
+        }
         if ($payrollPaid > 0) {
             $byCategory['Payroll'] = ($byCategory['Payroll'] ?? 0) + $payrollPaid;
         }
@@ -1295,7 +1385,7 @@ class OwnerController extends Controller
             $byCategory[$key] = ($byCategory[$key] ?? 0) + (float) $g->sum('amount');
         }
 
-        $settlements = Settlement::whereIn('centre_id', $ids)
+        $settlements = Settlement::withCashFlag()->whereIn('centre_id', $ids)
             ->withCount('items')
             ->latest()
             ->limit(24)
@@ -1309,11 +1399,13 @@ class OwnerController extends Controller
                 'expense_pending' => (float) $expenses->where('status', 'pending')->sum('amount'),
                 'payroll_pending' => (float) Payroll::whereIn('centre_id', $ids)->where('status', 'pending')->sum('net_salary'),
                 'margin' => $totalIncome > 0 ? round(($totalIncome - $totalExpense) / $totalIncome * 100) : 0,
-                'settlement_payable' => (float) $settlements->whereIn('status', ['pending', 'approved'])->sum('net_amount'),
-                'settlement_paid' => (float) $settlements->where('status', 'paid')->sum('net_amount'),
+                'settlement_payable' => (float) Settlement::withoutCentreCash()->whereIn('centre_id', $ids)->whereIn('status', ['pending', 'approved'])->sum('net_amount'),
+                'settlement_paid' => (float) Settlement::whereIn('centre_id', $ids)->where('status', 'paid')->sum('net_amount'),
             ],
             'by_category' => $byCategory->map(fn ($v, $k) => ['category' => $k ?: 'Other', 'amount' => $v])->values(),
-            'ledger' => $ledger->sortByDesc('date')->take(80)->values(),
+            'ledger' => $ledger->sortByDesc('date')->values(),
+            'history' => ['legacy_aggregate_count' => $income->where('source', 'legacy_aggregate')->count()],
+            'centre_cash' => \App\Services\PaymentReceipts::centreCashSummary($ids->all()),
             'settlements' => $settlements,
         ]);
     }
@@ -1407,12 +1499,14 @@ class OwnerController extends Controller
 
     public function updateWaste(Request $request, WasteStream $waste)
     {
+        abort_if($waste->requested_by, 403, 'Caretaker requests are managed by the area office.');
         $this->ownOrFail($request, $waste)->update($this->validateWaste($request));
         return response()->json(['data' => $waste]);
     }
 
     public function deleteWaste(Request $request, WasteStream $waste)
     {
+        abort_if($waste->requested_by, 403, 'Caretaker requests must be retained.');
         $this->ownOrFail($request, $waste)->delete();
         return response()->json(['message' => 'Waste stream removed.']);
     }
@@ -1429,17 +1523,20 @@ class OwnerController extends Controller
     /** Assign a waste stream to a specific partner. */
     public function assignWaste(Request $request, WasteStream $waste)
     {
+        abort_if($waste->requested_by, 403, 'Caretaker requests must be assigned by the area office.');
         $this->ownOrFail($request, $waste);
         $data = $request->validate([
             'partner_id' => ['required', 'exists:users,id'],
-            'pickup_scheduled_for' => ['nullable', 'date'],
+            'pickup_scheduled_for' => ['required', 'date'],
         ]);
-        $partner = User::where('id', $data['partner_id'])->where('role', 'waste_partner')->firstOrFail();
+        $partner = User::where('id', $data['partner_id'])->where('role', 'waste_partner')
+            ->where('status', 'active')->firstOrFail();
 
         $waste->update([
             'assigned_partner_id' => $partner->id,
             'status' => 'pickup_assigned',
-            'pickup_scheduled_for' => $data['pickup_scheduled_for'] ?? $waste->pickup_scheduled_for,
+            'pickup_scheduled_for' => $data['pickup_scheduled_for'],
+            'pickup_delay_alerted_at' => null,
         ]);
 
         \App\Services\Notify::send($partner->id, 'New pickup assigned',

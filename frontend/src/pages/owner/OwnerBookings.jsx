@@ -62,12 +62,12 @@ export default function OwnerBookings() {
       </PageHead>
 
       {/* Stats */}
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-5">
         <StatCard icon={CalendarCheck} label="Total bookings" value={summary.total} accent="blue" />
         <StatCard icon={Clock} label="Pending review" value={summary.pending} accent="amber" />
         <StatCard icon={CheckCircle2} label="Confirmed" value={summary.confirmed} accent="emerald" />
         <StatCard icon={CalendarCheck} label="Upcoming" value={summary.upcoming} accent="violet" />
-        <StatCard icon={Wallet} label="Collected" value={summary.revenue} money accent="brand" />
+        <div className="col-span-2 xl:col-span-1"><StatCard icon={Wallet} label="Collected" value={summary.revenue} money accent="brand" /></div>
       </div>
 
       {/* Search + filter */}
@@ -76,7 +76,10 @@ export default function OwnerBookings() {
           <Search className="h-4 w-4 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search booking no, name or phone…" className="w-full bg-transparent text-sm outline-none" />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Booking status" className="input w-full sm:hidden">
+          {FILTERS.map((f) => <option key={f || "all"} value={f}>{f ? f.replaceAll("_", " ") : "All statuses"}</option>)}
+        </select>
+        <div className="hidden flex-wrap gap-2 sm:flex">
           {FILTERS.map((f) => (
             <button key={f || "all"} onClick={() => setStatus(f)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition ${status === f ? "bg-brand-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
@@ -94,7 +97,10 @@ export default function OwnerBookings() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((b) => {
             const canConfirm = ["pending_review", "payment_pending"].includes(b.status);
-            const canComplete = b.status === "confirmed";
+            const todayDhaka = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+            const finalDate = (b.booking_dates || []).reduce((latest, slot) => slot.date > latest ? slot.date : latest, b.event_date);
+            const canComplete = ["confirmed", "paid"].includes(b.status)
+              && !b.caretaker_assigned && Number(b.due_amount || 0) <= 0 && finalDate <= todayDhaka;
             const canCancel = !["cancelled", "completed", "refunded"].includes(b.status);
             const mixed = new Set((b.booking_dates || []).map((s) => s.session_type)).size > 1;
             return (
@@ -124,7 +130,7 @@ export default function OwnerBookings() {
                     <div>
                       <div className="text-lg font-extrabold tabular-nums text-slate-900">{taka(b.total_amount)}</div>
                       {b.due_amount > 0
-                        ? <div className="text-xs font-semibold text-amber-600">Paid {taka(b.paid_amount)} · Due {taka(b.due_amount)}</div>
+                        ? <div className="text-xs font-semibold text-amber-600"><span>Paid</span> {taka(b.paid_amount)} · <span>Due</span> {taka(b.due_amount)}</div>
                         : <div className="text-xs font-semibold text-emerald-600">Fully paid</div>}
                     </div>
                     <button onClick={() => setNoteFor(b)} title={b.notes || "Add note"}
@@ -134,6 +140,7 @@ export default function OwnerBookings() {
                   </div>
 
                   {/* actions */}
+                  {b.caretaker_assigned && ["confirmed", "paid"].includes(b.status) && finalDate <= todayDhaka && <p className="text-xs font-semibold text-blue-700">Caretaker will confirm event completion.</p>}
                   <div className="flex flex-wrap gap-1.5">
                     <Action onClick={() => setDetailFor(b)} cls="flex-1 justify-center bg-slate-100 text-slate-700 hover:bg-slate-200" icon={Eye}>Details</Action>
                     {canConfirm && <Action busy={busy === b.booking_no} onClick={() => act(b, "confirm")} cls="flex-1 justify-center bg-emerald-50 text-emerald-700 hover:bg-emerald-100" icon={Check}>Confirm</Action>}
@@ -170,7 +177,7 @@ export default function OwnerBookings() {
 function Action({ onClick, busy, cls, icon: Icon, children }) {
   return (
     <button disabled={busy} onClick={onClick}
-      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${cls}`}>
+      className={`inline-flex min-h-11 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${cls}`}>
       <Icon className="h-3.5 w-3.5" /> {children}
     </button>
   );

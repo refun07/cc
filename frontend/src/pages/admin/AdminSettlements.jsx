@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, CircleDollarSign, Clock3, HandCoins, Pause, Play, Plus, ReceiptText, X } from "lucide-react";
 import {
   adminCentres, adminCreateSettlement, adminSetCommissionRate,
@@ -18,12 +18,18 @@ export default function AdminSettlements() {
   const [creating, setCreating] = useState(false);
   const [paying, setPaying] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+  const request = useRef(0);
 
-  const load = () => {
+  const load = useCallback(() => {
+    const id = ++request.current;
     setData(null);
-    adminSettlements(status ? { status } : {}).then(setData).catch(() => setData({ data: [], summary: {} }));
-  };
-  useEffect(load, [status]);
+    setError("");
+    adminSettlements(status ? { status } : {})
+      .then((result) => { if (id === request.current) setData(result); })
+      .catch((err) => { if (id === request.current) setError(apiError(err)); });
+  }, [status]);
+  useEffect(() => { load(); return () => { request.current += 1; }; }, [load]);
   useEffect(() => { adminCentres({}).then(setCentres).catch(() => setCentres([])); }, []);
 
   const transition = async (row, next) => {
@@ -49,13 +55,22 @@ export default function AdminSettlements() {
         </button>
       </PageHead>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-4 border-l-4 border-amber-500 bg-amber-50 p-4 text-sm text-amber-900">
+        <p>Cash collected at the centre is excluded from payouts. Cash VAT and fees require separate reconciliation.</p>
+        {data?.centre_cash && <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
+          <div><dt>Centre cash retained (all time, after refunds)</dt><dd className="font-bold">{taka(data.centre_cash.net_collected)}</dd></div>
+          <div><dt>Cash fees and tax to reconcile (all time)</dt><dd className="font-bold">{taka(data.centre_cash.fees_tax_to_reconcile)}</dd></div>
+          <div><dt>Historical payouts blocked for cash review</dt><dd className="font-bold">{taka(s.cash_blocked || 0)}</dd></div>
+        </dl>}
+      </div>
+
+      {data && !error && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={CircleDollarSign} label="Gross reconciled" value={s.gross || 0} money accent="blue" />
         <StatCard icon={ReceiptText} label="Platform fees" value={s.commission || 0} money accent="violet" />
         <StatCard icon={ReceiptText} label="Tax withheld" value={s.tax || 0} money accent="amber" />
         <StatCard icon={Clock3} label="Awaiting payout" value={s.payable || 0} money accent="rose" />
         <StatCard icon={HandCoins} label="Paid to centres" value={s.paid || 0} money accent="emerald" />
-      </div>
+      </div>}
 
       <div className="my-5 flex flex-wrap gap-2" aria-label="Filter settlements by status">
         {FILTERS.map((f) => <button key={f || "all"} onClick={() => setStatus(f)}
@@ -65,14 +80,14 @@ export default function AdminSettlements() {
       </div>
 
       <Card>
-        {!data ? <Loading /> : data.data.length === 0 ? (
+        {error ? <div role="alert" className="p-6 text-rose-700"><p>{error}</p><button type="button" onClick={load} className="mt-3 min-h-11 rounded-lg border border-rose-200 px-4 font-semibold">Retry</button></div> : !data ? <Loading /> : data.data.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-12 text-center">
             <HandCoins className="h-9 w-9 text-slate-300" />
             <div className="font-semibold text-slate-600">No settlements found</div>
             <div className="max-w-sm text-sm text-slate-400">Generate one after a centre has paid bookings in the selected payment period.</div>
           </div>
         ) : (
-          <Table head={["Settlement", "Centre", "Payment period", "Bookings", "Gross", "Fees + tax", "Net payout", "Status", "Actions"]}>
+          <Table head={["Settlement", "Centre", "Payment period", "Settlement items", "Gross", "Fees + tax", "Net payout", "Status", "Actions"]}>
             {data.data.map((row) => <tr key={row.id} className="hover:bg-slate-50">
               <td className="px-5 py-3 font-mono text-xs text-slate-500">{row.settlement_no}</td>
               <td className="px-5 py-3"><div className="font-medium text-slate-800">{row.centre?.name}</div><div className="text-xs text-slate-400">Future rate {Number(row.centre?.commission_rate || 0)}%</div></td>
@@ -81,10 +96,10 @@ export default function AdminSettlements() {
               <td className="px-5 py-3 font-semibold tabular-nums">{taka(row.gross_amount)}</td>
               <td className="px-5 py-3 tabular-nums text-slate-500">{taka(Number(row.commission_amount) + Number(row.tax_amount))}</td>
               <td className="px-5 py-3 font-extrabold tabular-nums text-emerald-700">{taka(row.net_amount)}</td>
-              <td className="px-5 py-3"><Badge status={row.status} />{row.payment_reference && <div className="mt-1 font-mono text-[10px] text-slate-400">{row.payment_reference}</div>}</td>
+              <td className="px-5 py-3"><Badge status={row.status} />{row.contains_centre_cash && <div className="mt-1 text-xs font-semibold text-amber-800">Centre cash: reconciliation required</div>}{row.payment_reference && <div className="mt-1 font-mono text-[10px] text-slate-400">{row.payment_reference}</div>}</td>
               <td className="px-5 py-3"><div className="flex min-w-max gap-2">
-                {row.status === "pending" && <Action disabled={busy === row.id} onClick={() => transition(row, "approved")} icon={Check}>Approve</Action>}
-                {row.status === "approved" && <Action disabled={busy === row.id} onClick={() => transition(row, "paid")} icon={HandCoins}>Pay</Action>}
+                {row.status === "pending" && <Action disabled={busy === row.id || row.contains_centre_cash} onClick={() => transition(row, "approved")} icon={Check}>Approve</Action>}
+                {row.status === "approved" && <Action disabled={busy === row.id || row.contains_centre_cash} onClick={() => transition(row, "paid")} icon={HandCoins}>Pay</Action>}
                 {["pending", "approved"].includes(row.status) && <Action disabled={busy === row.id} onClick={() => transition(row, "held")} icon={Pause} danger>Hold</Action>}
                 {row.status === "held" && <Action disabled={busy === row.id} onClick={() => transition(row, "pending")} icon={Play}>Resume</Action>}
               </div></td>
@@ -109,7 +124,7 @@ function GenerateModal({ open, centres, onClose, onCreated }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (open) { setForm(defaults); setRate(5); } }, [open, defaults]);
   const selected = centres.find((c) => String(c.id) === String(form.centre_id));
-  useEffect(() => { if (selected) setRate(Number(selected.commission_rate || 5)); }, [selected]);
+  useEffect(() => { if (selected) setRate(Number(selected.commission_rate ?? 5)); }, [selected]);
   if (!open) return null;
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 

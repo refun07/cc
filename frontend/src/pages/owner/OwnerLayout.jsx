@@ -1,22 +1,25 @@
 import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, CalendarCheck, UtensilsCrossed, CalendarRange, Store,
+  LayoutDashboard, CalendarCheck, CalendarRange, Store,
   LogOut, Lock, Phone, ExternalLink, Building2, Boxes, Users, Wallet, Recycle, BarChart3, Calculator,
-  ContactRound,
+  ContactRound, Ticket, Paintbrush,
 } from "lucide-react";
 import { loginAccount } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import ImpersonationBanner from "../../components/ImpersonationBanner";
 import NotificationBell from "../../components/NotificationBell";
+import LanguageSwitcher from "../../components/LanguageSwitcher";
+import PortalMobileNavigation from "../../components/PortalMobileNavigation";
 import logo from "../../assets/dscc_3.jpg";
 
 const NAV = [
   ["/owner", "Dashboard", LayoutDashboard, true],
   ["/owner/bookings", "Bookings", CalendarCheck],
+  ["/owner/tickets", "Service requests", Ticket],
   ["/owner/crm", "CRM", ContactRound],
   ["/owner/availability", "Availability", CalendarRange],
-  ["/owner/menus", "Food Menus", UtensilsCrossed],
+  ["/owner/decorators", "Decorators", Paintbrush],
   ["/owner/inventory", "Inventory", Boxes],
   ["/owner/hrm", "Staff & HRM", Users],
   ["/owner/expenses", "Expenses", Wallet],
@@ -42,7 +45,7 @@ export default function OwnerLayout() {
             <div className="text-[10px] uppercase tracking-wider text-emerald-300/70">Owner Dashboard</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
           {NAV.map(([to, label, Icon, end]) => (
             <NavLink key={to} to={to} end={end}
               className={({ isActive }) =>
@@ -62,28 +65,22 @@ export default function OwnerLayout() {
 
       <div className="lg:pl-64">
         <ImpersonationBanner />
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-5 py-3 backdrop-blur">
-          <nav className="flex gap-1 overflow-x-auto lg:hidden">
-            {NAV.map(([to, label, Icon, end]) => (
-              <NavLink key={to} to={to} end={end}
-                className={({ isActive }) => `flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium ${isActive ? "bg-brand-600 text-white" : "text-slate-500"}`}>
-                <Icon className="h-4 w-4" /> {label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b border-slate-200 bg-white/95 px-3 backdrop-blur sm:px-5">
+          <PortalMobileNavigation items={NAV} title="Centre Panel" tone="emerald" />
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            <LanguageSwitcher />
             <NotificationBell dark={false} />
-            <div className="text-right">
+            <div className="hidden text-right sm:block">
               <div className="text-sm font-semibold text-slate-900">{user.name}</div>
               <div className="text-[11px] text-slate-400">{user.phone}</div>
             </div>
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-emerald-600 text-sm font-bold text-white">{user.name[0]?.toUpperCase()}</span>
-            <button onClick={logout} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Sign out">
+            <span className="hidden h-9 w-9 place-items-center rounded-full bg-emerald-600 text-sm font-bold text-white sm:grid">{user.name[0]?.toUpperCase()}</span>
+            <button onClick={logout} className="grid h-11 w-11 place-items-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" aria-label="Sign out">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>
-        <main className="p-5 sm:p-7"><Outlet /></main>
+        <main className="min-w-0 p-3 sm:p-7"><Outlet /></main>
       </div>
     </div>
   );
@@ -114,6 +111,7 @@ function OwnerLogin() {
     <div className="relative flex min-h-screen items-center justify-center bg-emerald-950 p-4">
       <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px,#fff 1px,transparent 0)", backgroundSize: "22px 22px" }} />
       <div className="relative w-full max-w-sm rounded-3xl bg-white p-7 shadow-2xl">
+        <div className="mb-2 flex justify-end"><LanguageSwitcher /></div>
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 ring-1 ring-slate-200">
             <img src={logo} alt="" className="h-full w-full rounded-xl object-cover" />
@@ -137,7 +135,7 @@ function OwnerLogin() {
             {busy ? "Signing in…" : "Sign in to Centre Panel"}
           </button>
         </form>
-        <p className="mt-4 text-center text-xs text-slate-400">Seeded owner: 01710000000 · password</p>
+        {import.meta.env.DEV && <p className="mt-4 text-center text-xs text-slate-400">Seeded owner: 01710000000 · password</p>}
       </div>
     </div>
   );

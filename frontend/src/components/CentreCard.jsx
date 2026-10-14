@@ -6,7 +6,7 @@ import { facilityIcon } from "../lib/facilityIcons";
 
 const FALLBACK = "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=900&q=70";
 
-export default function CentreCard({ centre }) {
+export default function CentreCard({ centre, priority = false }) {
   const nav = useNavigate();
   const go = () => nav(`/centres/${centre.slug}`);
 
@@ -25,9 +25,9 @@ export default function CentreCard({ centre }) {
   const [broken, setBroken] = useState({});
   const timer = useRef(null);
 
-  // Auto-advance one image after another.
+  // Keep mobile cards still so browsing and scrolling are predictable.
   useEffect(() => {
-    if (slides.length <= 1 || paused) return undefined;
+    if (slides.length <= 1 || paused || !window.matchMedia("(min-width: 640px) and (prefers-reduced-motion: no-preference)").matches) return undefined;
     timer.current = setInterval(() => setIndex((i) => (i + 1) % slides.length), 3500);
     return () => clearInterval(timer.current);
   }, [slides.length, paused]);
@@ -46,13 +46,13 @@ export default function CentreCard({ centre }) {
       className="group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg bg-white ring-1 ring-slate-200/70 shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(15,23,42,0.3)] hover:ring-brand-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
     >
       {/* ---- media ---- */}
-      <div className="relative h-60 overflow-hidden bg-slate-100 sm:h-64">
+      <div className="relative h-52 overflow-hidden bg-slate-100 sm:h-64">
         {slides.map((s, i) => (
           <img
             key={i}
             src={srcFor(s, i)}
             alt={`${centre.name} venue ${i + 1}`}
-            loading={i === 0 ? "eager" : "lazy"}
+            loading={priority && i === 0 ? "eager" : "lazy"}
             onError={() => setBroken((b) => (b[i] ? b : { ...b, [i]: true }))}
             className={`absolute inset-0 h-full w-full object-cover transition-all duration-[1200ms] ease-out group-hover:scale-105 ${
               i === index ? "opacity-100" : "opacity-0"
@@ -72,7 +72,7 @@ export default function CentreCard({ centre }) {
         </span>
 
         {slides.length > 1 && (
-          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
+          <div className="absolute inset-x-0 bottom-3 hidden justify-center gap-1.5 sm:flex">
             {slides.map((_, i) => (
               <button
                 key={i}
@@ -87,7 +87,7 @@ export default function CentreCard({ centre }) {
       </div>
 
       {/* ---- body ---- */}
-      <div className="flex flex-1 flex-col px-5 pb-5 pt-4">
+      <div className="flex flex-1 flex-col px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
         <h3 className="text-lg font-bold leading-tight text-slate-900 transition-colors group-hover:text-brand-700">
           {centre.name}
         </h3>

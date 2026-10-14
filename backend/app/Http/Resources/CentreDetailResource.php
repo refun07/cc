@@ -15,6 +15,16 @@ class CentreDetailResource extends JsonResource
             'area' => $this->area,
             'address' => $this->address,
             'description' => $this->description,
+            'decorator_phone' => $this->decorator_phone,
+            'decorator_name' => $this->decorator_name,
+            'decorators' => $this->decorators->where('status', 'active')->values()->map(fn ($decorator) => [
+                'id' => $decorator->id,
+                'name' => $decorator->name,
+                'phone' => $decorator->phone,
+                'service_area' => $decorator->service_area,
+                'address' => $decorator->address,
+                'description' => $decorator->description,
+            ]),
             'capacity' => $this->capacity,
             'base_price' => (float) $this->base_price,
             'half_day_price' => (float) $this->half_day_price,
@@ -41,15 +51,6 @@ class CentreDetailResource extends JsonResource
                 'capacity' => (int) ($f->capacity ?: $this->capacity),
                 'half_day_price' => (float) ($f->half_day_price ?: $this->half_day_price),
                 'full_day_price' => (float) ($f->full_day_price ?: $this->full_day_price),
-            ]),
-            'food_menus' => $this->foodMenus->where('status', 'active')->values()->map(fn ($m) => [
-                'id' => $m->id,
-                'name' => $m->name,
-                'description' => $m->description,
-                'items' => $m->items,
-                'menu_type' => $m->menu_type,
-                'price_per_person' => (float) $m->price_per_person,
-                'min_guest_count' => $m->min_guest_count,
             ]),
         ];
     }

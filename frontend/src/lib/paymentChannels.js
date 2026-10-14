@@ -1,0 +1,18 @@
+export const EKPAY_CHANNELS = [
+  { name: "Visa", image: "visa.svg" },
+  { name: "Mastercard", image: "master.svg" },
+  { name: "American Express", image: "american_express.svg" },
+  { name: "bKash", image: "bkash.png" },
+  { name: "Nagad", image: "nagad.png" },
+  { name: "Rocket", image: "rocket.png" },
+  { name: "Upay", image: "upay.png" },
+  { name: "TAP", image: "tap.png" },
+  { name: "TakaPay", image: "takapay.svg" },
+  { name: "Bank Asia", image: "bank-asia.svg" },
+  { name: "BRAC Bank", image: "brac-bank.svg" },
+  { name: "EBL", image: "ebl.svg" },
+  { name: "City Bank", image: "city-bank.svg" },
+  { name: "UCB", image: "ucb.svg" },
+  { name: "AB Bank", image: "ab-bank.svg" },
+  { name: "DBBL", image: "dbbl.svg" },
+];

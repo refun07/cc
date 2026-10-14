@@ -7,7 +7,7 @@ import { taka, sessionLabel } from "../lib/format";
 export default function Invoice({ booking, centre }) {
   if (!booking) return null;
   const issued = new Date().toISOString().slice(0, 10);
-  const centreName = centre?.name || booking.centre?.name || "DSCC Community Centre";
+  const centreName = centre?.name || booking.centre?.name || "ICCMS Community Centre";
   const centreArea = centre?.area || booking.centre?.area || "";
 
   return (
@@ -17,7 +17,7 @@ export default function Invoice({ booking, centre }) {
         <div>
           <div className="text-2xl font-extrabold tracking-tight">{centreName}</div>
           <div className="text-sm text-slate-500">{centreArea}</div>
-          <div className="mt-1 text-xs text-slate-400">DSCC Community Centre Marketplace</div>
+          <div className="mt-1 text-xs text-slate-400">ICCMS DSCC Community Centres</div>
         </div>
         <div className="text-right">
           <div className="text-xl font-extrabold uppercase tracking-widest text-slate-900">Invoice</div>
@@ -40,6 +40,7 @@ export default function Invoice({ booking, centre }) {
           <div>{booking.event_type || "Event"} · {booking.guest_count} guests</div>
           <div className="text-slate-500">{booking.event_date}{booking.date_count > 1 ? ` (+${booking.date_count - 1} more)` : ""}</div>
           <div className="text-slate-500">{sessionLabel(booking.session_type)}</div>
+          {booking.event_manager_name && <div className="mt-1 text-slate-500">Organiser: {booking.event_manager_name} · {booking.event_manager_phone}</div>}
         </div>
       </div>
 

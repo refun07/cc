@@ -1,15 +1,17 @@
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, MapPin, CalendarDays, Clock, Users, Tag, Utensils, ShieldCheck } from "lucide-react";
+import { X, MapPin, CalendarDays, Clock, Users, Tag, ShieldCheck } from "lucide-react";
 import { taka, sessionLabel } from "../lib/format";
+import { useT } from "../store/langStore";
 
 /**
  * Final review of all booking info before money moves.
- * Props: open, draft, customer{name,phone,email}, method, payOption, payNow, dueLater, busy, onConfirm, onClose
+ * Props: open, draft, customer{name,phone}, method, payOption, payNow, dueLater, busy, onConfirm, onClose
  */
 export default function BookingPreviewModal({
-  open, draft, customer, method, payOption, payNow, dueLater, busy, onConfirm, onClose,
+  open, draft, customer, eventManager, method, payOption, payNow, dueLater, busy, onConfirm, onClose,
 }) {
+  const { lang } = useT();
   if (!draft) return null;
   const q = draft.quote;
 
@@ -70,7 +72,7 @@ export default function BookingPreviewModal({
                   )}
                   <Row icon={Users} label="Guests" value={draft.guestCount} />
                   <Row icon={Tag} label="Event" value={draft.eventType || "—"} />
-                  {draft.menuName && <Row icon={Utensils} label="Menu" value={draft.menuName} />}
+                  {draft.decorator && <Row icon={Tag} label="Decorator" value={`${draft.decorator.name} · ${draft.decorator.phone}`} />}
                 </div>
               </div>
 
@@ -78,20 +80,20 @@ export default function BookingPreviewModal({
               <div className="mt-3 rounded-2xl p-4 ring-1 ring-slate-200/70">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Booked by</div>
                 <div className="mt-1 font-semibold text-slate-900">{customer.name}</div>
-                <div className="text-sm text-slate-500">{customer.phone}{customer.email ? ` · ${customer.email}` : ""}</div>
+                <div className="text-sm text-slate-500">{customer.phone}</div>
+                {eventManager?.name && <div className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">Event manager: <span className="font-semibold text-slate-900">{eventManager.name}</span> · {eventManager.phone}</div>}
               </div>
 
               {/* cost */}
               <div className="mt-3 space-y-1.5 rounded-2xl p-4 ring-1 ring-slate-200/70 text-sm">
                 <Line label="Venue" value={q.venue_amount} />
-                <Line label="Food" value={q.food_amount} />
                 <Line label="Service charge" value={q.service_charge} />
                 <Line label="VAT" value={q.vat_amount} />
                 <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-extrabold text-slate-900">
                   <span>Total</span><span>{taka(q.total_amount)}</span>
                 </div>
                 <div className="flex justify-between pt-1 text-brand-700">
-                  <span className="font-semibold">Paying now ({payOption})</span>
+                  <span className="font-semibold">{payOption === "cash" ? (lang === "bn" ? "এখন পরিশোধ" : "Paying now") : `Paying now (${payOption})`}</span>
                   <span className="font-extrabold">{taka(payNow)}</span>
                 </div>
                 {dueLater > 0 && (
@@ -100,7 +102,7 @@ export default function BookingPreviewModal({
                   </div>
                 )}
                 <div className="flex justify-between pt-1 text-sm text-slate-500">
-                  <span>Payment method</span><span className="font-medium text-slate-700">{method}</span>
+                  <span>Payment method</span><span className="font-medium text-slate-700">{method === "Cash" && lang === "bn" ? "নগদ" : method}</span>
                 </div>
               </div>
             </div>

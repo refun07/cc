@@ -483,7 +483,7 @@ function HrSettingsTab() {
 
   return (
     <div>
-      <PageHead title="Centre HR settings" subtitle="Defaults for your staff. Blank fields inherit the DSCC global rule; individual staff can still override these." />
+      <PageHead title="Centre HR settings" subtitle="Defaults for your staff. Blank fields inherit the ICCMS global rule; individual staff can still override these." />
       <Card>
         <div className="max-w-2xl space-y-5 p-6">
           <F label="Late check-in cutoff" hint={`Blank = global (${global.late_cutoff || "10:00"}). Staff checking in after this are marked late.`}>

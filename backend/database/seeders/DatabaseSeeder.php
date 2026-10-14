@@ -16,7 +16,7 @@ class DatabaseSeeder extends Seeder
     {
         User::updateOrCreate(
             ['email' => 'admin@dscc.test'],
-            ['name' => 'DSCC Admin', 'phone' => '01700000000', 'role' => 'admin', 'password' => Hash::make('password')]
+            ['name' => 'ICCMS Admin', 'phone' => '01700000000', 'role' => 'admin', 'password' => Hash::make('password')]
         );
 
         $facilityPool = [
@@ -70,9 +70,10 @@ class DatabaseSeeder extends Seeder
                 [
                     'owner_id' => $owner->id,
                     'name' => $c['name'],
+                    'booking_prefix' => 'ICCMS',
                     'area' => $c['area'],
                     'address' => $c['area'].', Dhaka South City Corporation, Bangladesh',
-                    'description' => "A verified DSCC community centre in {$c['area']} offering full-day and half-day event bookings with in-house catering, decoration, and zero waste management support.",
+                    'description' => "A verified ICCMS community centre in {$c['area']} offering full-day and half-day event bookings with in-house catering, decoration, and zero waste management support.",
                     'capacity' => $c['cap'],
                     'base_price' => $c['half'],
                     'half_day_price' => $c['half'],

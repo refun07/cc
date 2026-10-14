@@ -196,7 +196,8 @@ function PickupCard({ row, scope, onOpen }) {
           <Truck className="h-4 w-4" /> Claim and schedule
         </button>
       )}
-      {active && (
+      {row.awaiting_caretaker_confirmation && <p className="mt-4 text-sm text-amber-800">Awaiting caretaker collection confirmation</p>}
+      {active && !row.awaiting_caretaker_confirmation && (
         <button onClick={() => onOpen({ type: "status", row, status: row.status === "collected" ? "recycled" : "collected", notes: row.partner_notes || "" })} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-teal-200 bg-teal-50 text-sm font-semibold text-teal-800 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
           <CheckCircle2 className="h-4 w-4" /> {row.status === "collected" ? "Record final outcome" : "Mark as collected"}
         </button>
