@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\CommunityCentre;
+use App\Models\CentreFloor;
+use App\Models\CentreDecorator;
+use App\Models\AvailabilitySlot;
 use App\Models\FoodMenu;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,6 +111,165 @@ class FlexibleBookingTest extends TestCase
             'amount' => 25000,
             'payment_method' => 'Cash',
         ]);
+    }
+
+    public function test_owner_booking_keeps_the_selected_floor(): void
+    {
+        $floor = CentreFloor::create([
+            'centre_id' => $this->centre->id,
+            'name' => 'Ground Floor Hall',
+            'capacity' => 300,
+            'half_day_price' => 25000,
+            'full_day_price' => 45000,
+            'status' => 'active',
+        ]);
+
+        $response = $this->withToken($this->owner->api_token)->postJson('/api/owner/bookings', [
+            'centre_floor_id' => $floor->id,
+            'customer_name' => 'Floor Booking Customer',
+            'customer_phone' => '01855555555',
+            'event_date' => now()->addDays(10)->toDateString(),
+            'session_type' => 'full_day',
+            'guest_count' => 100,
+            'event_manager_name' => 'Local Organiser',
+            'event_manager_phone' => '01912345679',
+            'mark_paid' => false,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.centre_floor_id', $floor->id)
+            ->assertJsonPath('data.floor_name', 'Ground Floor Hall')
+            ->assertJsonPath('data.event_manager_name', 'Local Organiser');
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $response->json('data.id'),
+            'centre_floor_id' => $floor->id,
+        ]);
+    }
+
+    public function test_same_floor_cannot_be_booked_twice_even_when_availability_row_is_missing(): void
+    {
+        $firstFloor = CentreFloor::create([
+            'centre_id' => $this->centre->id, 'name' => 'First Floor',
+            'capacity' => 300, 'half_day_price' => 25000, 'full_day_price' => 45000, 'status' => 'active',
+        ]);
+        $secondFloor = CentreFloor::create([
+            'centre_id' => $this->centre->id, 'name' => 'Second Floor',
+            'capacity' => 300, 'half_day_price' => 25000, 'full_day_price' => 45000, 'status' => 'active',
+        ]);
+        $date = now()->addDays(18)->toDateString();
+        $book = fn ($floorId, $session) => $this->withToken($this->owner->api_token)
+            ->postJson('/api/owner/bookings', [
+                'centre_floor_id' => $floorId,
+                'customer_name' => 'Floor Customer',
+                'customer_phone' => '01855555555',
+                'event_date' => $date,
+                'session_type' => $session,
+                'guest_count' => 100,
+                'mark_paid' => false,
+            ]);
+
+        $book($firstFloor->id, 'half_day_morning')->assertCreated();
+        AvailabilitySlot::where('centre_floor_id', $firstFloor->id)->delete();
+        $this->getJson("/api/centres/{$this->centre->slug}/calendar?from={$date}&to={$date}&floor_id={$firstFloor->id}")
+            ->assertOk()->assertJsonPath('data.0.full_day', false)
+            ->assertJsonPath('data.0.half_day_morning', false)
+            ->assertJsonPath('data.0.half_day_evening', true);
+        $book($firstFloor->id, 'half_day_morning')->assertUnprocessable();
+        $book($firstFloor->id, 'full_day')->assertUnprocessable();
+        $book($firstFloor->id, 'half_day_evening')->assertCreated();
+        $book($secondFloor->id, 'full_day')->assertCreated();
+        $this->assertDatabaseCount('bookings', 3);
+    }
+
+    public function test_customer_nid_is_required_once_and_never_returned_by_auth_api(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer', 'phone' => '01912345678', 'api_token' => Str::random(72),
+        ]);
+        $payload = [
+            'centre_slug' => $this->centre->slug,
+            'event_date' => now()->addDays(24)->toDateString(),
+            'session_type' => 'full_day',
+            'guest_count' => 100,
+        ];
+
+        $this->withToken($customer->api_token)->postJson('/api/bookings', [
+            ...$payload, 'nid_number' => '1234567890', 'payment_option' => 'later',
+        ])->assertUnprocessable()->assertJsonValidationErrors('payment_option');
+
+        $this->withToken($customer->api_token)->postJson('/api/bookings', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('nid_number');
+        foreach (['12345678910', '1234567890', '1111111111'] as $invalidNid) {
+            $this->withToken($customer->api_token)->postJson('/api/bookings', [
+                ...$payload, 'nid_number' => $invalidNid,
+            ])->assertUnprocessable()->assertJsonValidationErrors('nid_number');
+        }
+        $this->withToken($customer->api_token)->postJson('/api/bookings', [
+            ...$payload, 'nid_number' => '3216549870', 'event_manager_name' => 'Event Lead',
+        ])->assertUnprocessable()->assertJsonValidationErrors('event_manager_phone');
+        $decorator = CentreDecorator::create([
+            'centre_id' => $this->centre->id, 'name' => 'Venue Decorator', 'phone' => '01812345678',
+            'service_area' => 'Dhanmondi', 'status' => 'active',
+        ]);
+        $created = $this->withToken($customer->api_token)->postJson('/api/bookings', [
+            ...$payload, 'nid_number' => '3216549870', 'decorator_id' => $decorator->id,
+            'event_manager_name' => 'Event Lead', 'event_manager_phone' => '01912345679',
+        ])->assertCreated()->assertJsonPath('data.event_manager_name', 'Event Lead')
+            ->assertJsonPath('data.event_manager_phone', '01912345679')
+            ->assertJsonPath('data.decorator_name', 'Venue Decorator')
+            ->assertJsonPath('data.decorator_phone', '01812345678');
+        $bookingNo = $created->json('data.booking_no');
+        $this->withToken($customer->api_token)->patchJson("/api/bookings/{$bookingNo}/details", [
+            'customer_name' => $customer->name, 'customer_phone' => $customer->phone,
+            'event_manager_name' => null, 'event_manager_phone' => null,
+        ])->assertOk()->assertJsonPath('data.event_manager_name', null);
+        $this->assertSame('3216549870', $customer->fresh()->nid_number);
+        $this->assertStringNotContainsString('3216549870', \DB::table('users')->where('id', $customer->id)->value('nid_number'));
+        $this->withToken($customer->api_token)->getJson('/api/auth/me')
+            ->assertOk()->assertJsonPath('user.nid_saved', true)
+            ->assertDontSee('3216549870');
+
+        $this->assertDatabaseHas('bookings', [
+            'booking_no' => $bookingNo,
+            'centre_decorator_id' => $decorator->id,
+            'decorator_name' => 'Venue Decorator',
+            'decorator_phone' => '01812345678',
+        ]);
+        $decorator->update(['status' => 'inactive']);
+        $this->withToken($customer->api_token)->postJson('/api/bookings', [
+            ...$payload,
+            'event_date' => now()->addDays(25)->toDateString(),
+            'decorator_id' => $decorator->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('decorator_id');
+
+        $this->withToken($customer->api_token)->postJson('/api/bookings', [
+            ...$payload,
+            'event_date' => now()->addDays(25)->toDateString(),
+        ])->assertCreated();
+    }
+
+    public function test_existing_obviously_invalid_nid_must_be_replaced_before_booking(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer', 'phone' => '01912345678', 'api_token' => Str::random(72),
+            'nid_number' => '1234567890',
+        ]);
+        $this->withToken($customer->api_token)->getJson('/api/auth/me')
+            ->assertOk()->assertJsonPath('user.nid_saved', false);
+
+        $payload = [
+            'centre_slug' => $this->centre->slug,
+            'event_date' => now()->addDays(24)->toDateString(),
+            'session_type' => 'full_day',
+            'guest_count' => 100,
+        ];
+        $this->withToken($customer->api_token)->postJson('/api/bookings', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('nid_number');
+        $this->withToken($customer->api_token)->postJson('/api/bookings', [
+            ...$payload, 'nid_number' => '3216549870',
+        ])->assertCreated();
+        $this->assertSame('3216549870', $customer->fresh()->nid_number);
     }
 
     public function test_manual_adjustment_requires_an_audit_reason(): void

@@ -23,6 +23,7 @@ export default function OwnerMenus() {
     try {
       if (editing.id) await ownerUpdateMenu(editing.id, payload);
       else await ownerCreateMenu(payload);
+      toast.success(editing.id ? `“${payload.name}” updated.` : `“${payload.name}” added.`);
       setEditing(null);
       load();
     } catch (err) {

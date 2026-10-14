@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Phone, User, Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
-import { registerAccount, loginAccount } from "../services/api";
+import { X, Phone, User, Lock, Eye, EyeOff, Check } from "lucide-react";
+import { registerAccount, loginAccount, requestRegistrationOtp, requestPasswordOtp, resetPasswordByPhone } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import logo from "../assets/dscc_3.jpg";
 
@@ -18,24 +18,114 @@ function normalizePhone(raw) {
 const PERKS = ["Track every booking", "Faster checkout", "Manage cancellations & refunds"];
 
 export default function AuthModal({ open, onClose, onSuccess, defaultMode = "register" }) {
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
+  const titleId = useId();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [mode, setMode] = useState(defaultMode);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", phone: "", password: "", confirmPassword: "", code: "" });
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const trigger = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose?.();
+      }
+      if (event.key !== "Tab") return;
+      const controls = [...(dialogRef.current?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex="0"]') || [])]
+        .filter((element) => element.getClientRects().length);
+      const first = controls[0];
+      const last = controls.at(-1);
+      const outside = !dialogRef.current?.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || outside)) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || outside)) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (open) {
+      setMode(defaultMode);
+      setError("");
+      setNotice("");
+      setForm({ name: "", phone: "", password: "", confirmPassword: "", code: "" });
+    }
+  }, [open, defaultMode]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const isRegister = mode === "register";
+  const isRegisterCode = mode === "register-code";
+  const isResetCode = mode === "reset-code";
+  const isForgot = mode === "forgot";
+  const isLogin = mode === "login";
+  const codeStep = isRegisterCode || isResetCode;
+
+  const changeMode = (next) => {
+    setMode(next);
+    setError("");
+    setNotice("");
+  };
+
+  const resend = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await (isRegisterCode ? requestRegistrationOtp : requestPasswordOtp)(normalizePhone(form.phone));
+      setNotice("A new code has been sent by SMS.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not send a code. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
     setBusy(true);
     const phone = normalizePhone(form.phone);
     try {
-      const res = isRegister
-        ? await registerAccount({ ...form, phone })
+      if (isRegister) {
+        await requestRegistrationOtp(phone);
+        setMode("register-code");
+        setNotice("Enter the 6-digit code sent to your phone.");
+        return;
+      }
+      if (isForgot) {
+        await requestPasswordOtp(phone);
+        setMode("reset-code");
+        setNotice("If this number has an account, an SMS code has been sent.");
+        return;
+      }
+      if (isResetCode) {
+        await resetPasswordByPhone({ phone, code: form.code, password: form.password, password_confirmation: form.confirmPassword });
+        setForm((f) => ({ ...f, code: "", password: "", confirmPassword: "" }));
+        setMode("login");
+        setNotice("Password updated. Sign in with your new password.");
+        return;
+      }
+      const res = isRegisterCode
+        ? await registerAccount({ name: form.name, phone, password: form.password, code: form.code })
         : await loginAccount({ phone, password: form.password });
       setAuth({ user: res.user, token: res.token });
       onSuccess?.(res.user);
@@ -59,16 +149,19 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
           onClick={onClose}
         >
           <motion.div
+            ref={dialogRef}
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, y: 28, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 28, scale: 0.96 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="relative w-full max-w-md overflow-hidden rounded-[28px] bg-white shadow-2xl ring-1 ring-black/5"
+            className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[28px] bg-white shadow-2xl ring-1 ring-black/5"
             role="dialog"
             aria-modal="true"
+            aria-labelledby={titleId}
           >
             <button
+              ref={closeRef}
               onClick={onClose}
               aria-label="Close"
               className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white/90 backdrop-blur transition hover:bg-white/25"
@@ -86,26 +179,26 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
 
               <div className="relative flex items-center gap-3">
                 <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg ring-1 ring-white/40">
-                  <img src={logo} alt="DSCC" className="h-full w-full rounded-xl object-cover" />
+                  <img src={logo} alt="ICCMS" className="h-full w-full rounded-xl object-cover" />
                 </span>
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-100/90">DSCC Marketplace</div>
-                  <div className="text-xs text-emerald-50/80">Community Centre Booking</div>
+                  <div className="text-base font-bold leading-none text-white">ICCMS</div>
+                  <div className="mt-1 text-[11px] font-semibold leading-none text-emerald-50/80">DSCC</div>
                 </div>
               </div>
 
-              <h2 className="relative mt-5 font-display text-[26px] font-bold leading-tight">
-                {isRegister ? "Create your account" : "Welcome back"}
+              <h2 id={titleId} className="relative mt-5 font-display text-[26px] font-bold leading-tight">
+                {isRegister || isRegisterCode ? "Create your account" : isForgot || isResetCode ? "Reset your password" : "Welcome back"}
               </h2>
               <p className="relative mt-1 text-sm text-emerald-50/90">
-                {isRegister
-                  ? "Sign up with your mobile number to book a centre."
-                  : "Sign in with your mobile number to continue."}
+                {isRegister || isRegisterCode
+                  ? "Verify your mobile number to book a centre."
+                  : isForgot || isResetCode ? "Use a code sent to your mobile number." : "Sign in with your mobile number to continue."}
               </p>
             </div>
 
             {/* segmented tab control floating over the seam */}
-            <div className="relative -mt-6 px-7">
+            {!isForgot && !isResetCode && <div className="relative -mt-6 px-7">
               <div className="flex rounded-2xl bg-white p-1 shadow-lg ring-1 ring-slate-100">
                 {[
                   ["register", "Sign up"],
@@ -113,26 +206,26 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
                 ].map(([m, label]) => (
                   <button
                     key={m}
-                    onClick={() => { setMode(m); setError(""); }}
+                    onClick={() => changeMode(m)}
                     className="relative flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition"
                   >
-                    {mode === m && (
+                    {(mode === m || (m === "register" && isRegisterCode)) && (
                       <motion.span
                         layoutId="auth-seg"
                         className="absolute inset-0 rounded-xl bg-brand-600"
                         transition={{ type: "spring", stiffness: 400, damping: 32 }}
                       />
                     )}
-                    <span className={`relative ${mode === m ? "text-white" : "text-slate-500"}`}>{label}</span>
+                    <span className={`relative ${mode === m || (m === "register" && isRegisterCode) ? "text-white" : "text-slate-500"}`}>{label}</span>
                   </button>
                 ))}
               </div>
-            </div>
+            </div>}
 
             {/* ---------- Form ---------- */}
             <form onSubmit={submit} className="space-y-3.5 px-7 pb-7 pt-5">
               <AnimatePresence initial={false} mode="popLayout">
-                {isRegister && (
+                {(isRegister || isRegisterCode) && (
                   <motion.div
                     key="name"
                     initial={{ opacity: 0, height: 0 }}
@@ -141,7 +234,7 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
                     transition={{ duration: 0.2 }}
                   >
                     <Field icon={User} label="Full name">
-                      <input value={form.name} onChange={set("name")} className="auth-input" placeholder="e.g. Karim Ahmed" required={isRegister} />
+                      <input value={form.name} onChange={set("name")} className="auth-input" placeholder="e.g. Karim Ahmed" required readOnly={isRegisterCode} />
                     </Field>
                   </motion.div>
                 )}
@@ -156,39 +249,34 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
                   inputMode="numeric"
                   autoComplete="tel"
                   required
+                  readOnly={codeStep}
                 />
               </Field>
 
-              <AnimatePresence initial={false} mode="popLayout">
-                {isRegister && (
-                  <motion.div
-                    key="email"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Field icon={Mail} label="Email (optional)">
-                      <input value={form.email} onChange={set("email")} type="email" className="auth-input" placeholder="you@example.com" />
-                    </Field>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {codeStep && <Field icon={Lock} label="SMS code">
+                <input value={form.code} onChange={set("code")} className="auth-input" placeholder="6-digit code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" required />
+              </Field>}
 
-              <Field icon={Lock} label="Password">
+              {(isLogin || isRegister || codeStep) && <Field icon={Lock} label={isResetCode ? "New password" : "Password"}>
                 <input
                   value={form.password}
                   onChange={set("password")}
                   type={showPw ? "text" : "password"}
                   className="auth-input"
-                  placeholder={isRegister ? "At least 6 characters" : "Your password"}
-                  autoComplete={isRegister ? "new-password" : "current-password"}
+                  placeholder={isRegister || codeStep ? "At least 6 characters" : "Your password"}
+                  autoComplete={isLogin ? "current-password" : "new-password"}
                   required
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label="Toggle password" className="text-slate-400 transition hover:text-slate-600">
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
-              </Field>
+              </Field>}
+
+              {isResetCode && <Field icon={Lock} label="Confirm new password">
+                <input value={form.confirmPassword} onChange={set("confirmPassword")} type="password" className="auth-input" autoComplete="new-password" required />
+              </Field>}
+
+              {notice && <p role="status" className="text-sm text-brand-700">{notice}</p>}
 
               <AnimatePresence>
                 {error && (
@@ -207,8 +295,13 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
                 disabled={busy}
                 className="mt-1 w-full rounded-2xl bg-gradient-to-r from-brand-600 to-emerald-600 px-4 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:shadow-brand-600/40 active:scale-[0.99] disabled:opacity-60"
               >
-                {busy ? "Please wait…" : isRegister ? "Create account & continue" : "Sign in & continue"}
+                {busy ? "Please wait…" : isRegister ? "Send verification code" : isRegisterCode ? "Verify & create account" : isForgot ? "Send reset code" : isResetCode ? "Reset password" : "Sign in & continue"}
               </button>
+
+              {codeStep && <div className="flex justify-between text-xs">
+                <button type="button" onClick={() => changeMode(isRegisterCode ? "register" : "forgot")} className="font-semibold text-brand-700 hover:underline">Edit number</button>
+                <button type="button" onClick={resend} disabled={busy} className="font-semibold text-brand-700 hover:underline disabled:opacity-50">Resend code</button>
+              </div>}
 
               {isRegister ? (
                 <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-1">
@@ -218,22 +311,23 @@ export default function AuthModal({ open, onClose, onSuccess, defaultMode = "reg
                     </span>
                   ))}
                 </div>
-              ) : (
+              ) : isLogin ? (
                 <p className="pt-1 text-center text-xs text-slate-400">
                   <Lock className="mr-1 inline h-3 w-3" /> Your number stays private and secure.
                 </p>
-              )}
+              ) : null}
 
               <p className="text-center text-xs text-slate-400">
-                {isRegister ? "Already have an account? " : "New here? "}
+                {isRegister || isRegisterCode ? "Already have an account? " : isLogin ? "New here? " : "Remembered your password? "}
                 <button
                   type="button"
-                  onClick={() => { setMode(isRegister ? "login" : "register"); setError(""); }}
+                  onClick={() => changeMode(isRegister || isRegisterCode || isForgot || isResetCode ? "login" : "register")}
                   className="font-semibold text-brand-700 hover:underline"
                 >
-                  {isRegister ? "Sign in" : "Create one"}
+                  {isRegister || isRegisterCode || isForgot || isResetCode ? "Sign in" : "Create one"}
                 </button>
               </p>
+              {isLogin && <button type="button" onClick={() => changeMode("forgot")} className="block w-full text-center text-xs font-semibold text-brand-700 hover:underline">Forgot password?</button>}
             </form>
           </motion.div>
         </motion.div>

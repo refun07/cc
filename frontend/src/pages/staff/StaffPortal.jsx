@@ -3,11 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Phone, Lock, LogOut, IdCard, CalendarCheck, Wallet, CheckCircle2, XCircle, Building2, ExternalLink,
 } from "lucide-react";
-import { loginAccount, staffMe, staffAttendance, staffPayslips } from "../../services/api";
+import { loginAccount, staffMe, staffAttendance, staffPayslips, staffCheckIn } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import { taka } from "../../lib/format";
+import { toast } from "../../store/toastStore";
 import logo from "../../assets/dscc_3.jpg";
 import NotificationBell from "../../components/NotificationBell";
+import ImpersonationBanner from "../../components/ImpersonationBanner";
+import LanguageSwitcher from "../../components/LanguageSwitcher";
 
 const ATT = { present: "bg-emerald-100 text-emerald-700", absent: "bg-rose-100 text-rose-700", leave: "bg-amber-100 text-amber-700", late: "bg-orange-100 text-orange-700" };
 
@@ -21,12 +24,21 @@ function StaffDashboard({ onLogout }) {
   const [me, setMe] = useState(null);
   const [att, setAtt] = useState([]);
   const [slips, setSlips] = useState([]);
+  const [checking, setChecking] = useState(false);
 
-  useEffect(() => {
+  const reload = () => {
     staffMe().then(setMe).catch(() => setMe(false));
     staffAttendance().then(setAtt).catch(() => {});
     staffPayslips().then(setSlips).catch(() => {});
-  }, []);
+  };
+  useEffect(reload, []);
+
+  const checkIn = async () => {
+    setChecking(true);
+    try { const r = await staffCheckIn(); toast.success(r.message); reload(); }
+    catch (e) { toast.error(e.response?.data?.message || "Could not check in."); }
+    finally { setChecking(false); }
+  };
 
   if (me === false) return <div className="grid min-h-dvh place-items-center text-slate-400">No staff profile linked.</div>;
   if (!me) return <div className="grid min-h-dvh place-items-center text-slate-400">Loading…</div>;
@@ -34,13 +46,14 @@ function StaffDashboard({ onLogout }) {
 
   return (
     <div className="min-h-dvh bg-slate-100">
+      <ImpersonationBanner />
       <header className="bg-emerald-950 text-white">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2">
             <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-white p-0.5"><img src={logo} alt="" className="h-full w-full rounded object-cover" /></span>
-            <div><div className="text-sm font-bold">Staff Portal</div><div className="text-[10px] uppercase tracking-wider text-emerald-300/70">DSCC Marketplace</div></div>
+            <div><div className="text-sm font-bold">Staff Portal</div><div className="text-[10px] uppercase tracking-wider text-emerald-300/70">ICCMS DSCC</div></div>
           </Link>
-          <div className="flex items-center gap-2"><NotificationBell dark={true} /><button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/20"><LogOut className="h-4 w-4" /> Sign out</button></div>
+          <div className="flex items-center gap-2"><LanguageSwitcher tone="light" /><NotificationBell dark={true} /><button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/20"><LogOut className="h-4 w-4" /> Sign out</button></div>
         </div>
       </header>
 
@@ -70,11 +83,23 @@ function StaffDashboard({ onLogout }) {
           <Stat icon={XCircle} label="Absent (30d)" value={me.stats.absent_30d} cls="text-rose-600" />
           <Stat icon={Wallet} label="Payslips" value={me.stats.paid_payslips} cls="text-brand-600" />
         </div>
-        {me.today_attendance && (
-          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm">
-            Today's attendance: <span className={`ml-1 rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${ATT[me.today_attendance]}`}>{me.today_attendance}</span>
+        {/* Daily self check-in */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+          <div>
+            <div className="text-sm font-semibold text-slate-800">Daily attendance</div>
+            {me.today_attendance ? (
+              <div className="mt-0.5 text-sm text-slate-500">
+                Today: <span className={`ml-1 rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${ATT[me.today_attendance]}`}>{me.today_attendance}</span>
+                {me.today_check_in && <span className="ml-2 text-xs text-slate-400">checked in at {me.today_check_in}</span>}
+              </div>
+            ) : (
+              <div className="mt-0.5 text-sm text-amber-600">You haven't checked in today. Check in to record your attendance.</div>
+            )}
           </div>
-        )}
+          {!me.today_attendance
+            ? <button onClick={checkIn} disabled={checking} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"><CheckCircle2 className="h-4 w-4" /> {checking ? "Checking in…" : "Check in now"}</button>
+            : <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Checked in</span>}
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Payslips */}
@@ -148,6 +173,7 @@ function StaffLogin() {
     <div className="relative flex min-h-dvh items-center justify-center bg-emerald-950 p-4">
       <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px,#fff 1px,transparent 0)", backgroundSize: "22px 22px" }} />
       <div className="relative w-full max-w-sm rounded-3xl bg-white p-7 shadow-2xl">
+        <div className="mb-2 flex justify-end"><LanguageSwitcher /></div>
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white p-1 ring-1 ring-slate-200"><img src={logo} alt="" className="h-full w-full rounded-xl object-cover" /></span>
           <div><div className="font-display text-xl font-bold text-slate-900">Staff Portal</div><div className="inline-flex items-center gap-1 text-xs text-slate-400"><IdCard className="h-3.5 w-3.5" /> Sign in to your staff account</div></div>

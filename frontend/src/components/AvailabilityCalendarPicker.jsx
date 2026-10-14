@@ -1,23 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../services/api";
+import { useT } from "../store/langStore";
+import { calendarDate as ymd } from "../lib/bookingDates";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_BN = ["রবি", "সোম", "মঙ্গল", "বুধ", "বৃহস্পতি", "শুক্র", "শনি"];
 const SESSION_LABELS = {
   full_day: "Full day",
   half_day_morning: "Morning",
   half_day_evening: "Evening",
 };
+const SESSION_LABELS_BN = {
+  full_day: "পুরো দিন",
+  half_day_morning: "সকাল",
+  half_day_evening: "সন্ধ্যা",
+};
 
-const ymd = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-export default function AvailabilityCalendarPicker({ slug, value, sessionType, selectedDates = [], onSelect }) {
+export default function AvailabilityCalendarPicker({ slug, floorId, value, sessionType, selectedDates = [], onSelect }) {
+  const { lang } = useT();
   const [cursor, setCursor] = useState(() => {
     const date = value ? new Date(`${value}T00:00:00`) : new Date();
     return new Date(date.getFullYear(), date.getMonth(), 1);
   });
-  const [map, setMap] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [result, setResult] = useState(null);
+  const requestKey = JSON.stringify([slug, floorId, cursor.getTime(), retry]);
+  const ready = result?.key === requestKey && result.status === "ready";
+  const failed = result?.key === requestKey && result.status === "error";
+  const loading = Boolean(slug) && !ready && !failed;
+  const map = ready ? result.map : {};
 
   useEffect(() => {
     if (!value) return;
@@ -26,15 +38,15 @@ export default function AvailabilityCalendarPicker({ slug, value, sessionType, s
   }, [value]);
 
   useEffect(() => {
-    if (!slug) { setMap({}); return; }
+    if (!slug) return;
+    let active = true;
     const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
     const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-    setLoading(true);
-    api.get(`/centres/${slug}/calendar`, { params: { from: ymd(start), to: ymd(end) } })
-      .then((response) => setMap(Object.fromEntries(response.data.data.map((day) => [day.date, day]))))
-      .catch(() => setMap({}))
-      .finally(() => setLoading(false));
-  }, [slug, cursor]);
+    api.get(`/centres/${slug}/calendar`, { params: { from: ymd(start), to: ymd(end), floor_id: floorId || undefined } })
+      .then((response) => { if (active) setResult({ key: requestKey, status: "ready", map: Object.fromEntries(response.data.data.map((day) => [day.date, day])) }); })
+      .catch(() => { if (active) setResult({ key: requestKey, status: "error" }); });
+    return () => { active = false; };
+  }, [slug, floorId, cursor, requestKey]);
 
   const cells = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -47,26 +59,30 @@ export default function AvailabilityCalendarPicker({ slug, value, sessionType, s
 
   const today = ymd(new Date());
   const selected = new Set(selectedDates.filter(Boolean));
-  const monthLabel = cursor.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const locale = lang === "bn" ? "bn-BD" : "en-US";
+  const sessionLabels = lang === "bn" ? SESSION_LABELS_BN : SESSION_LABELS;
+  const monthLabel = cursor.toLocaleString(locale, { month: "long", year: "numeric" });
 
   return <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4" aria-label="Booking availability calendar">
     <div className="flex items-center justify-between gap-3">
-      <div><div className="font-display text-base font-bold text-slate-900">{monthLabel}</div><div className="text-[11px] text-slate-500">Showing {SESSION_LABELS[sessionType] || "selected session"} availability</div></div>
+      <div><div className="font-display text-base font-bold text-slate-900">{monthLabel}</div><div className="text-[11px] text-slate-500">{lang === "bn" ? "সবুজ তারিখে খালি আছে: " : "Green dates are open for "}<span className="font-semibold text-slate-600">{sessionLabels[sessionType] || (lang === "bn" ? "আপনার সেশন" : "your session")}</span></div></div>
       <div className="flex gap-1"><button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label="Previous month"><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label="Next month"><ChevronRight className="h-5 w-5" /></button></div>
     </div>
 
-    <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">{WEEKDAYS.map((day) => <div key={day} className="py-1">{day}</div>)}</div>
+    {failed && <div role="alert" className="mt-3 text-sm text-red-700">Could not load availability. <button type="button" onClick={() => setRetry((value) => value + 1)} className="min-h-11 px-2 font-semibold underline">Retry</button></div>}
+    {loading && <p role="status" className="mt-3 text-sm text-slate-500">Loading availability...</p>}
+    <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">{WEEKDAYS.map((day, index) => <div key={day} className="py-1">{lang === "bn" ? WEEKDAYS_BN[index] : day}</div>)}</div>
     <div className={`mt-1 grid grid-cols-7 gap-1 transition-opacity ${loading ? "opacity-50" : "opacity-100"}`} aria-busy={loading}>
       {cells.map((date, index) => {
-        if (!date) return <div key={`blank-${index}`} className="aspect-square" />;
+        if (!date) return <div key={`blank-${index}`} className="h-11" />;
         const dateString = ymd(date);
         const past = dateString < today;
         const info = map[dateString] || { full_day: true, half_day_morning: true, half_day_evening: true, any: true };
-        const available = !past && info[sessionType] !== false;
+        const available = ready && !past && info[sessionType] !== false;
         const chosenHere = value === dateString;
         const chosenElsewhere = selected.has(dateString) && !chosenHere;
-        const partial = !available && !past && info.any;
-        const disabled = past || !available || chosenElsewhere || !slug;
+        const partial = ready && !available && !past && info.any;
+        const disabled = !ready || past || !available || chosenElsewhere || !slug;
         const classes = chosenHere
           ? "bg-brand-600 text-white ring-2 ring-brand-200"
           : chosenElsewhere
@@ -76,7 +92,12 @@ export default function AvailabilityCalendarPicker({ slug, value, sessionType, s
               : partial
                 ? "bg-amber-50 text-amber-700"
                 : "bg-slate-100 text-slate-300";
-        return <button type="button" key={dateString} disabled={disabled} onClick={() => onSelect(dateString)} title={chosenElsewhere ? "Already selected" : available ? `${SESSION_LABELS[sessionType]} available` : partial ? "Other sessions may be available" : "Unavailable"} className={`relative aspect-square min-h-10 rounded-xl text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed ${classes}`} aria-label={`${date.toLocaleDateString("en-US", { month: "long", day: "numeric" })}: ${chosenElsewhere ? "already selected" : available ? "available" : "unavailable"}`} aria-pressed={chosenHere}>{date.getDate()}{chosenElsewhere && <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-violet-500" />}</button>;
+        const stateLabel = chosenElsewhere ? (lang === "bn" ? "আগেই নির্বাচিত" : "already selected") : available ? (lang === "bn" ? "খালি আছে" : "available") : (lang === "bn" ? "খালি নেই" : "unavailable");
+        const title = chosenElsewhere ? (lang === "bn" ? "আগেই নির্বাচিত" : "Already selected")
+          : available ? (lang === "bn" ? `${sessionLabels[sessionType] || "অন্তত একটি সেশন"} খালি আছে` : `${sessionLabels[sessionType] || "At least one session"} available`)
+          : partial ? (lang === "bn" ? "অন্য সেশন খালি থাকতে পারে" : "Other sessions may be available")
+          : (lang === "bn" ? "খালি নেই" : "Unavailable");
+        return <button type="button" key={dateString} disabled={disabled} onClick={() => onSelect(dateString)} title={title} className={`relative h-11 rounded-lg text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:cursor-not-allowed ${classes}`} aria-label={`${date.toLocaleDateString(locale, { month: "long", day: "numeric" })}: ${stateLabel}`} aria-pressed={chosenHere}>{lang === "bn" ? new Intl.NumberFormat("bn-BD", { useGrouping: false }).format(date.getDate()) : date.getDate()}{chosenElsewhere && <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-violet-500" />}</button>;
       })}
     </div>
 

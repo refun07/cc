@@ -1,17 +1,20 @@
 import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Truck, Leaf, LogOut, Lock, Phone, ExternalLink, Recycle,
+  LayoutDashboard, Truck, Leaf, LogOut, Lock, Phone, ExternalLink, Recycle, Ticket,
 } from "lucide-react";
 import { loginAccount } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import ImpersonationBanner from "../../components/ImpersonationBanner";
 import logo from "../../assets/dscc_3.jpg";
 import NotificationBell from "../../components/NotificationBell";
+import LanguageSwitcher from "../../components/LanguageSwitcher";
+import PortalMobileNavigation from "../../components/PortalMobileNavigation";
 
 const NAV = [
   ["/partner", "Dashboard", LayoutDashboard, true],
   ["/partner/pickups", "Pickups", Truck],
+  ["/partner/tickets", "Service requests", Ticket],
   ["/partner/impact", "Impact", Leaf],
 ];
 
@@ -24,7 +27,7 @@ export default function PartnerLayout() {
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-teal-900 bg-teal-950 text-teal-100/80 lg:flex">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white p-0.5">
-            <img src={logo} alt="DSCC" className="h-full w-full rounded-[10px] object-cover" />
+            <img src={logo} alt="ICCMS" className="h-full w-full rounded-[10px] object-cover" />
           </span>
           <div>
             <div className="text-sm font-bold text-white">Zero Waste Partner</div>
@@ -50,28 +53,22 @@ export default function PartnerLayout() {
         <ImpersonationBanner />
         <header className="sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur">
           <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
-            <nav className="flex flex-1 gap-1 overflow-x-auto lg:hidden" aria-label="Partner portal">
-              {NAV.map(([to, label, Icon, end]) => (
-                <NavLink key={to} to={to} end={end}
-                  className={({ isActive }) => `flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 text-xs font-semibold ${isActive ? "bg-teal-600 text-white" : "text-stone-500"}`}>
-                  <Icon className="h-4 w-4" /> {label}
-                </NavLink>
-              ))}
-            </nav>
+            <PortalMobileNavigation items={NAV} title="Zero Waste Partner" tone="teal" />
             <div className="ml-auto hidden text-right sm:block">
               <div className="text-sm font-semibold text-stone-900">{user.name}</div>
               <div className="text-[11px] text-stone-400">{user.phone}</div>
             </div>
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-600 text-sm font-bold text-white" aria-hidden="true">
+            <span className="hidden h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-600 text-sm font-bold text-white sm:grid" aria-hidden="true">
               {user.name[0]?.toUpperCase()}
             </span>
             <NotificationBell dark={false} />
+            <LanguageSwitcher />
             <button onClick={logout} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500" aria-label="Sign out">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>
-        <main className="p-4 sm:p-7"><Outlet /></main>
+        <main className="min-w-0 p-3 sm:p-7"><Outlet /></main>
       </div>
     </div>
   );
@@ -109,13 +106,14 @@ function PartnerLogin() {
       <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px,#fff 1px,transparent 0)", backgroundSize: "22px 22px" }} />
       <div className="absolute -left-24 top-12 h-64 w-64 rounded-full bg-teal-500/15 blur-3xl" />
       <div className="relative w-full max-w-sm rounded-3xl bg-white p-7 shadow-2xl shadow-black/30">
+        <div className="mb-2 flex justify-end"><LanguageSwitcher /></div>
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 place-items-center rounded-2xl bg-teal-50 text-teal-700">
             <Recycle className="h-6 w-6" />
           </span>
           <div>
             <h1 className="font-display text-xl font-bold text-stone-900">Zero Waste Partner</h1>
-            <p className="text-xs text-stone-500">DSCC collection and impact portal</p>
+            <p className="text-xs text-stone-500">ICCMS collection and impact portal</p>
           </div>
         </div>
         <form onSubmit={submit} className="mt-7 space-y-4">
@@ -138,7 +136,7 @@ function PartnerLogin() {
             {busy ? "Signing in…" : "Sign in to Partner Portal"}
           </button>
         </form>
-        <p className="mt-5 text-center text-xs text-stone-400">Demo: 01900000000 · password</p>
+        {import.meta.env.DEV && <p className="mt-5 text-center text-xs text-stone-400">Demo: 01900000000 · password</p>}
       </div>
     </div>
   );

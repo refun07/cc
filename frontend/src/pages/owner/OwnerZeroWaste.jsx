@@ -21,9 +21,10 @@ function AssignModal({ stream, onClose }) {
 
   const submit = async () => {
     if (!partnerId) return toast.error("Choose a partner.");
+    if (!date) return toast.error("Choose a pickup time.");
     setBusy(true);
     try {
-      const r = await ownerAssignWaste(stream.id, { partner_id: Number(partnerId), pickup_scheduled_for: date || null });
+      const r = await ownerAssignWaste(stream.id, { partner_id: Number(partnerId), pickup_scheduled_for: new Date(date).toISOString() });
       toast.success(r.message); onClose(true);
     } catch (e) { toast.error(e.response?.data?.message || "Could not assign."); }
     finally { setBusy(false); }
@@ -44,9 +45,9 @@ function AssignModal({ stream, onClose }) {
               {partners.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.phone}</option>)}
             </select>
           </label>
-          <label className="block"><span className="text-xs font-semibold text-slate-500">Scheduled pickup (optional)</span>
-            <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="input mt-1" /></label>
-          <button onClick={submit} disabled={busy} className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{busy ? "Assigning…" : "Assign to partner"}</button>
+          <label className="block"><span className="text-xs font-semibold text-slate-500">Scheduled pickup</span>
+            <input type="datetime-local" required value={date} onChange={(e) => setDate(e.target.value)} className="input mt-1" /></label>
+          <button onClick={submit} disabled={busy || !partnerId || !date} className="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{busy ? "Assigning…" : "Assign to partner"}</button>
         </div>
       </div>
     </div>

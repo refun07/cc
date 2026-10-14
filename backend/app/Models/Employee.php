@@ -8,6 +8,11 @@ class Employee extends Model
 {
     protected $guarded = [];
 
+    protected $casts = [
+        'documents' => 'array',
+        'date_of_birth' => 'date:Y-m-d',
+    ];
+
     public function centre()
     {
         return $this->belongsTo(CommunityCentre::class, 'centre_id');

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CheckCheck, X, StickyNote, Search, CalendarCheck, Clock, CheckCircle2, Wallet, Plus } from "lucide-react";
+import { Check, CheckCheck, X, StickyNote, Search, CalendarCheck, Clock, CheckCircle2, Wallet, Plus, Eye, Phone, Users, CalendarDays } from "lucide-react";
 import { ownerBookings, ownerBookingAction, ownerBookingNote } from "../../services/api";
 import { taka, sessionLabel } from "../../lib/format";
-import { PageHead, Card, Table, Badge, Loading, StatCard } from "../admin/ui";
+import { PageHead, Card, Badge, Loading, StatCard } from "../admin/ui";
 import NoteModal from "../../components/NoteModal";
 import OwnerBookingModal from "./OwnerBookingModal";
+import OwnerBookingDetailModal from "./OwnerBookingDetailModal";
 import { toast } from "../../store/toastStore";
 import { askConfirm } from "../../store/confirmStore";
 
@@ -16,6 +17,7 @@ export default function OwnerBookings() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(null);
   const [noteFor, setNoteFor] = useState(null);
+  const [detailFor, setDetailFor] = useState(null);
   const [creating, setCreating] = useState(false);
 
   const load = () => { setAll(null); ownerBookings({}).then(setAll).catch(() => setAll([])); };
@@ -60,12 +62,12 @@ export default function OwnerBookings() {
       </PageHead>
 
       {/* Stats */}
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-5">
         <StatCard icon={CalendarCheck} label="Total bookings" value={summary.total} accent="blue" />
         <StatCard icon={Clock} label="Pending review" value={summary.pending} accent="amber" />
         <StatCard icon={CheckCircle2} label="Confirmed" value={summary.confirmed} accent="emerald" />
         <StatCard icon={CalendarCheck} label="Upcoming" value={summary.upcoming} accent="violet" />
-        <StatCard icon={Wallet} label="Collected" value={summary.revenue} money accent="brand" />
+        <div className="col-span-2 xl:col-span-1"><StatCard icon={Wallet} label="Collected" value={summary.revenue} money accent="brand" /></div>
       </div>
 
       {/* Search + filter */}
@@ -74,7 +76,10 @@ export default function OwnerBookings() {
           <Search className="h-4 w-4 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search booking no, name or phone…" className="w-full bg-transparent text-sm outline-none" />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Booking status" className="input w-full sm:hidden">
+          {FILTERS.map((f) => <option key={f || "all"} value={f}>{f ? f.replaceAll("_", " ") : "All statuses"}</option>)}
+        </select>
+        <div className="hidden flex-wrap gap-2 sm:flex">
           {FILTERS.map((f) => (
             <button key={f || "all"} onClick={() => setStatus(f)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition ${status === f ? "bg-brand-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
@@ -84,42 +89,70 @@ export default function OwnerBookings() {
         </div>
       </div>
 
-      <Card>
-        {!all ? <Loading /> : rows.length === 0 ? (
-          <div className="p-10 text-center text-sm text-slate-400">No bookings found.</div>
-        ) : (
-          <Table head={["Booking", "Customer", "Date", "Session", "Guests", "Total", "Paid", "Status", "Actions"]}>
-            {rows.map((b) => {
-              const canConfirm = ["pending_review", "payment_pending"].includes(b.status);
-              const canComplete = b.status === "confirmed";
-              const canCancel = !["cancelled", "completed", "refunded"].includes(b.status);
-              return (
-                <tr key={b.id} className="hover:bg-slate-50">
-                  <td className="px-5 py-3 font-mono text-xs text-slate-500">{b.booking_no}</td>
-                  <td className="px-5 py-3"><div className="font-medium text-slate-800">{b.customer_name}</div><div className="text-xs text-slate-400">{b.customer_phone}</div></td>
-                  <td className="px-5 py-3 tabular-nums text-slate-600"><div>{b.event_date}</div>{b.date_count > 1 && <div className="text-xs font-semibold text-brand-600">+{b.date_count - 1} more date{b.date_count > 2 ? "s" : ""}</div>}</td>
-                  <td className="px-5 py-3 text-slate-600">{new Set((b.booking_dates || []).map((slot) => slot.session_type)).size > 1 ? "Mixed sessions" : sessionLabel(b.session_type)}</td>
-                  <td className="px-5 py-3 tabular-nums">{b.guest_count}</td>
-                  <td className="px-5 py-3 font-semibold tabular-nums">{taka(b.total_amount)}</td>
-                  <td className="px-5 py-3 tabular-nums text-emerald-700">{taka(b.paid_amount)}</td>
-                  <td className="px-5 py-3"><Badge status={b.status} /></td>
-                  <td className="px-5 py-3">
-                    <div className="flex gap-1.5">
-                      {canConfirm && <Action busy={busy === b.booking_no} onClick={() => act(b, "confirm")} cls="bg-emerald-50 text-emerald-700 hover:bg-emerald-100" icon={Check}>Confirm</Action>}
-                      {canComplete && <Action busy={busy === b.booking_no} onClick={() => act(b, "complete")} cls="bg-blue-50 text-blue-700 hover:bg-blue-100" icon={CheckCheck}>Complete</Action>}
-                      {canCancel && <Action busy={busy === b.booking_no} onClick={() => act(b, "cancel")} cls="bg-rose-50 text-rose-700 hover:bg-rose-100" icon={X}>Cancel</Action>}
-                      <button onClick={() => setNoteFor(b)} title={b.notes || "Add note"}
-                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold ${b.notes ? "bg-amber-100 text-amber-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}>
-                        <StickyNote className="h-3.5 w-3.5" /> Note
-                      </button>
+      {!all ? (
+        <Card><Loading /></Card>
+      ) : rows.length === 0 ? (
+        <Card><div className="p-10 text-center text-sm text-slate-400">No bookings found.</div></Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map((b) => {
+            const canConfirm = ["pending_review", "payment_pending"].includes(b.status);
+            const todayDhaka = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+            const finalDate = (b.booking_dates || []).reduce((latest, slot) => slot.date > latest ? slot.date : latest, b.event_date);
+            const canComplete = ["confirmed", "paid"].includes(b.status)
+              && !b.caretaker_assigned && Number(b.due_amount || 0) <= 0 && finalDate <= todayDhaka;
+            const canCancel = !["cancelled", "completed", "refunded"].includes(b.status);
+            const mixed = new Set((b.booking_dates || []).map((s) => s.session_type)).size > 1;
+            return (
+              <div key={b.id} className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md">
+                {/* header */}
+                <button onClick={() => setDetailFor(b)} className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-left">
+                  <span className="font-mono text-xs font-semibold text-brand-700 group-hover:underline">{b.booking_no}</span>
+                  <Badge status={b.status} />
+                </button>
+
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-bold text-slate-900">{b.customer_name}</div>
+                      <div className="inline-flex items-center gap-1 text-xs text-slate-400"><Phone className="h-3 w-3" /> {b.customer_phone}</div>
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
-        )}
-      </Card>
+                    {b.event_type && <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700">{b.event_type}</span>}
+                  </div>
+
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-slate-600">
+                    <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4 text-slate-400" /> {b.event_date}{b.date_count > 1 ? ` +${b.date_count - 1}` : ""}</span>
+                    <span className="inline-flex items-center gap-1.5"><Clock className="h-4 w-4 text-slate-400" /> {mixed ? "Mixed" : sessionLabel(b.session_type)}</span>
+                    <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4 text-slate-400" /> {b.guest_count}</span>
+                  </div>
+
+                  <div className="flex items-end justify-between border-t border-slate-100 pt-3">
+                    <div>
+                      <div className="text-lg font-extrabold tabular-nums text-slate-900">{taka(b.total_amount)}</div>
+                      {b.due_amount > 0
+                        ? <div className="text-xs font-semibold text-amber-600"><span>Paid</span> {taka(b.paid_amount)} · <span>Due</span> {taka(b.due_amount)}</div>
+                        : <div className="text-xs font-semibold text-emerald-600">Fully paid</div>}
+                    </div>
+                    <button onClick={() => setNoteFor(b)} title={b.notes || "Add note"}
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold ${b.notes ? "bg-amber-100 text-amber-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}>
+                      <StickyNote className="h-3.5 w-3.5" /> {b.notes ? "View" : "Note"}
+                    </button>
+                  </div>
+
+                  {/* actions */}
+                  {b.caretaker_assigned && ["confirmed", "paid"].includes(b.status) && finalDate <= todayDhaka && <p className="text-xs font-semibold text-blue-700">Caretaker will confirm event completion.</p>}
+                  <div className="flex flex-wrap gap-1.5">
+                    <Action onClick={() => setDetailFor(b)} cls="flex-1 justify-center bg-slate-100 text-slate-700 hover:bg-slate-200" icon={Eye}>Details</Action>
+                    {canConfirm && <Action busy={busy === b.booking_no} onClick={() => act(b, "confirm")} cls="flex-1 justify-center bg-emerald-50 text-emerald-700 hover:bg-emerald-100" icon={Check}>Confirm</Action>}
+                    {canComplete && <Action busy={busy === b.booking_no} onClick={() => act(b, "complete")} cls="flex-1 justify-center bg-blue-50 text-blue-700 hover:bg-blue-100" icon={CheckCheck}>Complete</Action>}
+                    {canCancel && <Action busy={busy === b.booking_no} onClick={() => act(b, "cancel")} cls="flex-1 justify-center bg-rose-50 text-rose-700 hover:bg-rose-100" icon={X}>Cancel</Action>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <NoteModal
         open={!!noteFor}
@@ -130,6 +163,13 @@ export default function OwnerBookings() {
         onClose={() => setNoteFor(null)}
       />
       <OwnerBookingModal open={creating} onClose={() => setCreating(false)} onCreated={load} />
+      {detailFor && (
+        <OwnerBookingDetailModal
+          booking={detailFor}
+          onClose={() => setDetailFor(null)}
+          onUpdated={(updated) => { replace(updated); setDetailFor(updated); }}
+        />
+      )}
     </div>
   );
 }
@@ -137,7 +177,7 @@ export default function OwnerBookings() {
 function Action({ onClick, busy, cls, icon: Icon, children }) {
   return (
     <button disabled={busy} onClick={onClick}
-      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${cls}`}>
+      className={`inline-flex min-h-11 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${cls}`}>
       <Icon className="h-3.5 w-3.5" /> {children}
     </button>
   );

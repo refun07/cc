@@ -15,14 +15,14 @@ export default function AdminDashboard() {
   useEffect(() => { adminDashboard().then(setData).catch(() => setData({ stats: {}, trend: [], recent_bookings: { data: [] } })); }, []);
 
   if (!data) return <Loading rows={4} />;
-  const s = data.stats;
+  const s = data.stats || {};
   const recent = data.recent_bookings?.data || data.recent_bookings || [];
 
   return (
     <div>
-      <PageHead title="Marketplace overview" subtitle="Live snapshot of the DSCC community-centre marketplace." />
+      <PageHead title="DSCC overview" subtitle="Live snapshot of ICCMS community-centre operations." />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         <StatCard icon={Building2} label="Community centres" value={s.centres} accent="brand" />
         <StatCard icon={CalendarCheck} label="Total bookings" value={s.bookings} accent="blue" />
         <StatCard icon={Wallet} label="GMV" value={s.gmv} money accent="emerald" />

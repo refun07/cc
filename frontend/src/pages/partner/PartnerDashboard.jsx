@@ -65,7 +65,7 @@ export default function PartnerDashboard() {
               <span className="text-3xl font-extrabold tabular-nums">{stats.centres_served}</span>
             </div>
             <h2 className="mt-5 font-semibold">Community centres served</h2>
-            <p className="mt-1 text-sm leading-6 text-teal-100/70">Each completed pickup contributes to DSCC’s verified circular-waste record.</p>
+            <p className="mt-1 text-sm leading-6 text-teal-100/70">Each completed pickup contributes to ICCMS’s verified circular-waste record.</p>
           </div>
           <Card title="Recent processing">
             {data.recent.length === 0 ? <Empty text="Completed work will appear here." /> : (

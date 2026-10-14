@@ -4,19 +4,28 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/prepare-ocr.mjs",
+    "prebuild": "node scripts/prepare-ocr.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@techstark/opencv-js": "5.0.0-release.1",
+    "@tesseract.js-data/ben": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "axios": "^1.18.1",
     "framer-motion": "^12.42.0",
+    "heic-to": "^1.6.6",
     "lucide-react": "^1.21.0",
+    "mrz": "5.0.2",
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",
     "recharts": "^3.9.0",
+    "tesseract.js": "^7.0.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

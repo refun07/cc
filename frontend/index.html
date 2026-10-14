@@ -2,13 +2,142 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/dscc-logo.jpg" />
-    <link rel="alternate icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png?v=20261001" />
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=20261001" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20261001" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DSCC Community Centre Marketplace</title>
+    <title>ICCMS DSCC Community Centres</title>
+    <style>
+      /* The card carries inline styles, which outrank the browser default
+         rule for [hidden]. Without this it stays visible below the app. */
+      #boot-fallback[hidden] {
+        display: none !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="boot-fallback" hidden style="display: grid; min-height: 100dvh; place-items: center; padding: 0 16px; background: #f8fafc; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;">
+      <div style="width: 100%; max-width: 24rem; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; padding: 24px; text-align: center;">
+        <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #0f172a;">This page could not load</h1>
+        <p style="margin: 8px 0 0; font-size: 14px; line-height: 1.5; color: #475569;">Check your connection and try again.</p>
+        <button type="button" id="boot-retry" style="margin-top: 20px; min-height: 44px; width: 100%; border: 0; border-radius: 12px; background: #0f172a; color: #fff; font-size: 14px; font-weight: 600;">Retry</button>
+        <pre id="boot-diag" style="margin: 16px 0 0; padding: 10px; border-radius: 8px; background: #f1f5f9; color: #334155; font-size: 11px; line-height: 1.4; text-align: left; white-space: pre-wrap; word-break: break-word;"></pre>
+      </div>
+    </div>
+
+    <script>
+      // The app renders nothing until the entry module has downloaded and run,
+      // so a single failed asset request leaves a blank page with no way out.
+      // Mobile networks drop that first request often enough to matter. Reload
+      // once, then surface a retry rather than leaving the user on white.
+      (function () {
+        var RETRY_KEY = "dscc:boot-reload";
+        var RETRY_WINDOW_MS = 30000;
+        var BOOT_TIMEOUT_MS = 20000;
+        var ERROR_GRACE_MS = 4000;
+        var settled = false;
+
+        // The entry filename is content hashed, so it names the deployed build
+        // and tells us whether the server is serving what we think it is.
+        var entry = document.querySelector('script[type="module"][src]');
+        var BUILD_ID = entry ? entry.src.split("/").pop() : "dev";
+
+        function readRetry() {
+          try {
+            return Number(sessionStorage.getItem(RETRY_KEY) || 0);
+          } catch (error) {
+            return 0; // Storage is unavailable in private/locked-down browsers.
+          }
+        }
+
+        function markRetry() {
+          try {
+            sessionStorage.setItem(RETRY_KEY, String(Date.now()));
+          } catch (error) {
+            /* Falling back to the retry button is enough. */
+          }
+        }
+
+        function booted() {
+          return settled || document.getElementById("root").hasChildNodes();
+        }
+
+        // A blank page reports nothing, so record why the boot failed and show
+        // it on the card. Without this the failure is only reproducible on the
+        // user's own device, where there is no console to read.
+        var problems = [];
+
+        function note(what) {
+          if (problems.length < 4 && problems.indexOf(what) === -1) problems.push(what);
+        }
+
+        function recover() {
+          if (booted()) return;
+          settled = true;
+
+          if (Date.now() - readRetry() > RETRY_WINDOW_MS) {
+            markRetry();
+            window.location.reload();
+            return;
+          }
+
+          // The reload did not help, so stop looping and let the user decide.
+          document.getElementById("boot-diag").textContent = [
+            "build " + BUILD_ID,
+            navigator.userAgent,
+          ]
+            .concat(problems.length ? problems : ["no error reported (asset never arrived)"])
+            .join("\n");
+          document.getElementById("boot-fallback").hidden = false;
+        }
+
+        window.__dsccBooted = function () {
+          settled = true;
+        };
+
+        document.getElementById("boot-retry").addEventListener("click", function () {
+          window.location.reload();
+        });
+
+        // Only the entry module and its stylesheets can keep the app from
+        // starting. Icons and other decoration fail on plenty of healthy
+        // mobile loads, and treating those as fatal hides a working page.
+        function blocksBoot(el) {
+          if (!el || !el.tagName) return false;
+          if (el.tagName === "SCRIPT") return el.type === "module";
+          if (el.tagName === "LINK") return el.rel === "stylesheet" || el.rel === "modulepreload";
+          return false;
+        }
+
+        window.addEventListener(
+          "error",
+          function (event) {
+            if (blocksBoot(event.target)) {
+              note("failed to load: " + (event.target.src || event.target.href));
+
+              // A failed request is a symptom, not a verdict: the browser retries
+              // preloads, and React may still mount. Confirm before giving up.
+              setTimeout(recover, ERROR_GRACE_MS);
+              return;
+            }
+
+            // A script that loads but throws (unsupported syntax or API on an
+            // older mobile browser) is the other way the app never mounts.
+            if (!event.target || event.target === window) note(String(event.message || event.error));
+          },
+          true
+        );
+
+        window.addEventListener("unhandledrejection", function (event) {
+          note("unhandled: " + String((event.reason && event.reason.message) || event.reason));
+        });
+
+        setTimeout(recover, BOOT_TIMEOUT_MS);
+      })();
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

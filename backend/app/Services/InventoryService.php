@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\InventoryDamageReport;
+use App\Models\InventoryItem;
 use App\Models\InventoryLot;
 use App\Models\InventoryStockCount;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseReturn;
+use App\Models\PurchaseReturnItem;
 use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -87,6 +89,9 @@ class InventoryService
                     throw ValidationException::withMessages(['expires_at' => 'Expiry date cannot be before manufacture date.']);
                 }
                 $poItem = $po->items()->with('item')->whereKey($line['purchase_order_item_id'])->lockForUpdate()->firstOrFail();
+                if ($poItem->item->product_type === 'perishable' && empty($line['expires_at'])) {
+                    throw ValidationException::withMessages(['expires_at' => "{$poItem->item->name} is perishable — an expiry date is required."]);
+                }
                 $quantity = round((float) $line['quantity'], 2);
                 $remaining = round((float) $poItem->ordered_quantity - (float) $poItem->received_quantity, 2);
                 if ($quantity <= 0 || $quantity > $remaining) {
@@ -239,6 +244,144 @@ class InventoryService
             }
             $report->update(['status' => $status]);
             return $report->fresh(['item', 'lot']);
+        });
+    }
+
+    /** Add stock as a new lot without a purchase order (opening balance / ad-hoc receipt). */
+    public function createAdHocLot(array $data, User $user): InventoryLot
+    {
+        return DB::transaction(function () use ($data, $user) {
+            $item = InventoryItem::whereKey($data['inventory_item_id'])->lockForUpdate()->firstOrFail();
+            $qty = round((float) $data['received_quantity'], 2);
+            if ($qty <= 0) throw ValidationException::withMessages(['received_quantity' => 'Quantity must be greater than zero.']);
+            if (! empty($data['manufactured_at']) && ! empty($data['expires_at']) && $data['expires_at'] < $data['manufactured_at']) {
+                throw ValidationException::withMessages(['expires_at' => 'Expiry date cannot be before manufacture date.']);
+            }
+            if ($item->product_type === 'perishable' && empty($data['expires_at'])) {
+                throw ValidationException::withMessages(['expires_at' => "{$item->name} is perishable — an expiry date is required."]);
+            }
+            $cost = round((float) ($data['unit_cost'] ?? $item->average_cost ?? 0), 2);
+            $oldStock = (float) $item->current_stock;
+            $newStock = round($oldStock + $qty, 2);
+            $average = $newStock > 0 ? round((($oldStock * (float) $item->average_cost) + ($qty * $cost)) / $newStock, 2) : $cost;
+            $item->update(['current_stock' => $newStock, 'average_cost' => $average]);
+
+            $lot = InventoryLot::create([
+                'centre_id' => $item->centre_id, 'inventory_item_id' => $item->id,
+                'supplier_id' => $data['supplier_id'] ?? null,
+                'lot_no' => $data['lot_no'] ?: 'LOT-'.now()->format('ymd').'-'.strtoupper(Str::random(4)),
+                'manufactured_at' => $data['manufactured_at'] ?? null, 'expires_at' => $data['expires_at'] ?? null,
+                'received_quantity' => $qty, 'available_quantity' => $qty, 'damaged_quantity' => 0,
+                'unit_cost' => $cost, 'status' => 'active',
+            ]);
+            StockMovement::create([
+                'inventory_item_id' => $item->id, 'inventory_lot_id' => $lot->id, 'movement_type' => 'in',
+                'quantity' => $qty, 'balance_after' => $newStock, 'reason' => "Manual lot {$lot->lot_no}",
+                'reference_type' => 'manual_lot', 'reference_id' => $lot->id, 'unit_cost' => $cost, 'created_by' => $user->id,
+            ]);
+            return $lot->fresh(['item', 'supplier']);
+        });
+    }
+
+    /** Correct a lot's available quantity, expiry, lot number or status; syncs product stock. */
+    public function adjustLot(InventoryLot $lot, array $data, User $user): InventoryLot
+    {
+        return DB::transaction(function () use ($lot, $data, $user) {
+            $lot->lockForUpdate();
+            if (! empty($data['manufactured_at']) && ! empty($data['expires_at']) && $data['expires_at'] < $data['manufactured_at']) {
+                throw ValidationException::withMessages(['expires_at' => 'Expiry date cannot be before manufacture date.']);
+            }
+            $item = $lot->item()->lockForUpdate()->first();
+            if (array_key_exists('available_quantity', $data) && $data['available_quantity'] !== null) {
+                $newAvail = round((float) $data['available_quantity'], 2);
+                if ($newAvail < 0) throw ValidationException::withMessages(['available_quantity' => 'Available quantity cannot be negative.']);
+                $delta = round($newAvail - (float) $lot->available_quantity, 2);
+                if (abs($delta) > 0.001) {
+                    $balance = round((float) $item->current_stock + $delta, 2);
+                    if ($balance < 0) throw ValidationException::withMessages(['available_quantity' => 'Adjustment would drive product stock below zero.']);
+                    $item->update(['current_stock' => $balance]);
+                    StockMovement::create([
+                        'inventory_item_id' => $item->id, 'inventory_lot_id' => $lot->id,
+                        'movement_type' => $delta > 0 ? 'in' : 'adjust', 'quantity' => abs($delta), 'balance_after' => $balance,
+                        'reason' => $data['reason'] ?? "Lot {$lot->lot_no} corrected", 'reference_type' => 'lot_adjust',
+                        'reference_id' => $lot->id, 'unit_cost' => $lot->unit_cost, 'created_by' => $user->id,
+                    ]);
+                }
+                $lot->available_quantity = $newAvail;
+            }
+            foreach (['lot_no', 'manufactured_at', 'expires_at', 'unit_cost', 'status'] as $f) {
+                if (array_key_exists($f, $data) && $data[$f] !== null && $data[$f] !== '') $lot->$f = $data[$f];
+            }
+            if ((float) $lot->available_quantity <= 0 && $lot->status === 'active') $lot->status = 'depleted';
+            $lot->save();
+            return $lot->fresh(['item', 'supplier']);
+        });
+    }
+
+    /** Remove a lot, drawing its remaining available stock out of the product balance. */
+    public function deleteLot(InventoryLot $lot, User $user): void
+    {
+        DB::transaction(function () use ($lot, $user) {
+            $lot->lockForUpdate();
+            if (PurchaseReturnItem::where('inventory_lot_id', $lot->id)->exists()) {
+                throw ValidationException::withMessages(['lot' => 'This lot has purchase returns against it and cannot be deleted.']);
+            }
+            $avail = (float) $lot->available_quantity;
+            if ($avail > 0) {
+                $item = $lot->item()->lockForUpdate()->first();
+                $balance = round((float) $item->current_stock - $avail, 2);
+                if ($balance < 0) throw ValidationException::withMessages(['lot' => 'Deleting this lot would drive product stock below zero.']);
+                $item->update(['current_stock' => $balance]);
+                StockMovement::create([
+                    'inventory_item_id' => $item->id, 'inventory_lot_id' => null, 'movement_type' => 'adjust',
+                    'quantity' => $avail, 'balance_after' => $balance, 'reason' => "Lot {$lot->lot_no} deleted",
+                    'reference_type' => 'lot_delete', 'reference_id' => $lot->id, 'unit_cost' => $lot->unit_cost, 'created_by' => $user->id,
+                ]);
+            }
+            InventoryDamageReport::where('inventory_lot_id', $lot->id)->update(['inventory_lot_id' => null]);
+            $lot->delete();
+        });
+    }
+
+    /** Reverse a confirmed purchase return: restore lot & product stock, then delete it. */
+    public function deleteReturn(PurchaseReturn $return, User $user): void
+    {
+        DB::transaction(function () use ($return, $user) {
+            $return->lockForUpdate();
+            foreach ($return->items()->get() as $line) {
+                $item = InventoryItem::whereKey($line->inventory_item_id)->lockForUpdate()->first();
+                if ($item) {
+                    $balance = round((float) $item->current_stock + (float) $line->quantity, 2);
+                    $item->update(['current_stock' => $balance]);
+                    StockMovement::create([
+                        'inventory_item_id' => $item->id, 'inventory_lot_id' => $line->inventory_lot_id,
+                        'movement_type' => 'in', 'quantity' => $line->quantity, 'balance_after' => $balance,
+                        'reason' => "Reversed return {$return->return_no}", 'reference_type' => 'return_delete',
+                        'reference_id' => $return->id, 'unit_cost' => $line->unit_cost, 'created_by' => $user->id,
+                    ]);
+                }
+                if ($line->inventory_lot_id) {
+                    $lot = InventoryLot::whereKey($line->inventory_lot_id)->lockForUpdate()->first();
+                    if ($lot) $lot->update(['available_quantity' => round((float) $lot->available_quantity + (float) $line->quantity, 2), 'status' => 'active']);
+                }
+                if ($line->purchase_order_item_id) {
+                    $poItem = \App\Models\PurchaseOrderItem::whereKey($line->purchase_order_item_id)->lockForUpdate()->first();
+                    if ($poItem) $poItem->update(['returned_quantity' => max(round((float) $poItem->returned_quantity - (float) $line->quantity, 2), 0)]);
+                }
+            }
+            $return->items()->delete();
+            $return->delete();
+        });
+    }
+
+    /** Delete a damage report; if still recorded, restore the damaged stock first. */
+    public function deleteDamage(InventoryDamageReport $report, User $user): void
+    {
+        DB::transaction(function () use ($report, $user) {
+            if ($report->status === 'recorded') {
+                $this->resolveDamage($report, 'recovered', $user);
+            }
+            $report->fresh()->delete();
         });
     }
 }

@@ -20,6 +20,7 @@ class CentreListResource extends JsonResource
             'rating' => (float) $this->rating,
             'is_verified' => (bool) $this->is_verified,
             'cover_image' => $this->cover_image,
+            'images' => $this->whenLoaded('images', fn () => $this->images->pluck('image_path')->values()),
             'facilities' => $this->whenLoaded('facilities', fn () => $this->facilities->pluck('name')),
         ];
     }

@@ -109,6 +109,7 @@ class WastePartnerController extends Controller
     public function updateStatus(Request $request, WasteStream $waste)
     {
         abort_unless($waste->assigned_partner_id === $request->user()->id, 403, 'This pickup is assigned to another partner.');
+        abort_if($waste->requested_by && ! $waste->collection_confirmed_by, 422, 'The centre caretaker must confirm collection first.');
 
         $data = $request->validate([
             'status' => ['required', 'in:collected,recycled,composted,returned_to_inventory,disposed_safely'],
@@ -167,6 +168,7 @@ class WastePartnerController extends Controller
     {
         return [
             'id' => $waste->id,
+            'awaiting_caretaker_confirmation' => (bool) ($waste->requested_by && ! $waste->collection_confirmed_by),
             'centre' => $waste->centre,
             'waste_type' => $waste->waste_type,
             'quantity' => (float) $waste->quantity,

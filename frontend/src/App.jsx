@@ -1,7 +1,9 @@
-import { lazy, Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Toaster from "./components/Toaster";
 import ConfirmDialog from "./components/ConfirmDialog";
+import { useLangStore } from "./store/langStore";
+import { applyAutoTranslate } from "./i18n/autoTranslate";
 
 const Layout = lazy(() => import("./components/Layout"));
 const OwnerAccounting = lazy(() => import("./pages/owner/OwnerAccounting"));
@@ -13,11 +15,15 @@ const CentreDetail = lazy(() => import("./pages/CentreDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const BookingSuccess = lazy(() => import("./pages/BookingSuccess"));
 const MyBookings = lazy(() => import("./pages/MyBookings"));
+const MyApplications = lazy(() => import("./pages/MyApplications"));
+const Profile = lazy(() => import("./pages/Profile"));
+const SoftwareFeedback = lazy(() => import("./pages/SoftwareFeedback"));
+const Guides = lazy(() => import("./pages/Guides"));
 const OwnerLayout = lazy(() => import("./pages/owner/OwnerLayout"));
 const OwnerDashboard = lazy(() => import("./pages/owner/OwnerDashboard"));
 const OwnerBookings = lazy(() => import("./pages/owner/OwnerBookings"));
 const OwnerAvailability = lazy(() => import("./pages/owner/OwnerAvailability"));
-const OwnerMenus = lazy(() => import("./pages/owner/OwnerMenus"));
+const OwnerDecorators = lazy(() => import("./pages/owner/OwnerDecorators"));
 const OwnerProfile = lazy(() => import("./pages/owner/OwnerProfile"));
 const OwnerInventory = lazy(() => import("./pages/owner/OwnerInventory"));
 const OwnerHRM = lazy(() => import("./pages/owner/OwnerHRM"));
@@ -28,16 +34,36 @@ const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminCentres = lazy(() => import("./pages/admin/AdminCentres"));
 const AdminBookings = lazy(() => import("./pages/admin/AdminBookings"));
+const AdminCalendar = lazy(() => import("./pages/admin/AdminCalendar"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminPayments = lazy(() => import("./pages/admin/AdminPayments"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminHomepage = lazy(() => import("./pages/admin/AdminHomepage"));
 const AdminSettlements = lazy(() => import("./pages/admin/AdminSettlements"));
+const AdminFeedback = lazy(() => import("./pages/admin/AdminFeedback"));
+const AdminGuides = lazy(() => import("./pages/admin/AdminGuides"));
+const AreaDashboard = lazy(() => import("./pages/AreaDashboard"));
+const CaretakerDashboard = lazy(() => import("./pages/CaretakerDashboard"));
+const EventReports = lazy(() => import("./pages/EventReports"));
+const WasteDelays = lazy(() => import("./pages/WasteDelays"));
+const CoordinatorDashboard = lazy(() => import("./pages/CoordinatorDashboard"));
+const ServiceTickets = lazy(() => import("./pages/ServiceTickets"));
 const PartnerLayout = lazy(() => import("./pages/partner/PartnerLayout"));
 const PartnerDashboard = lazy(() => import("./pages/partner/PartnerDashboard"));
 const PartnerPickups = lazy(() => import("./pages/partner/PartnerPickups"));
 const PartnerImpact = lazy(() => import("./pages/partner/PartnerImpact"));
 
 export default function App() {
+  const lang = useLangStore((s) => s.lang);
+
+  // Whole-app auto-translation: re-apply whenever the language changes.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.title = lang === "bn" ? "ICCMS DSCC কমিউনিটি সেন্টার" : "ICCMS DSCC Community Centres";
+    applyAutoTranslate(lang);
+  }, [lang]);
+
   return (
     <>
     <Toaster />
@@ -49,9 +75,15 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/centres" element={<CentreListing />} />
         <Route path="/centres/:slug" element={<CentreDetail />} />
+        <Route path="/centres/:slug/book" element={<CentreDetail />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/booking/:bookingNo" element={<BookingSuccess />} />
         <Route path="/my-bookings" element={<MyBookings />} />
+        <Route path="/my-applications" element={<MyApplications />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/feedback" element={<SoftwareFeedback />} />
+        <Route path="/how-it-works" element={<Guides />} />
+        <Route path="/how-it-works/:slug" element={<Guides />} />
       </Route>
 
       {/* Owner / Community Centre panel */}
@@ -59,7 +91,8 @@ export default function App() {
         <Route index element={<OwnerDashboard />} />
         <Route path="bookings" element={<OwnerBookings />} />
         <Route path="availability" element={<OwnerAvailability />} />
-        <Route path="menus" element={<OwnerMenus />} />
+        <Route path="menus" element={<Navigate to="/owner/decorators" replace />} />
+        <Route path="decorators" element={<OwnerDecorators />} />
         <Route path="inventory" element={<OwnerInventory />} />
         <Route path="hrm" element={<OwnerHRM />} />
         <Route path="expenses" element={<OwnerExpenses />} />
@@ -68,6 +101,7 @@ export default function App() {
         <Route path="waste" element={<OwnerZeroWaste />} />
         <Route path="reports" element={<OwnerReports />} />
         <Route path="profile" element={<OwnerProfile />} />
+        <Route path="tickets" element={<ServiceTickets />} />
       </Route>
 
       {/* Admin panel */}
@@ -75,13 +109,30 @@ export default function App() {
         <Route index element={<AdminDashboard />} />
         <Route path="centres" element={<AdminCentres />} />
         <Route path="bookings" element={<AdminBookings />} />
+        <Route path="calendar" element={<AdminCalendar />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="payments" element={<AdminPayments />} />
         <Route path="settlements" element={<AdminSettlements />} />
         <Route path="reports" element={<AdminReports />} />
+        <Route path="settings" element={<AdminSettings />} />
+        <Route path="homepage" element={<AdminHomepage />} />
+        <Route path="guides" element={<AdminGuides />} />
+        <Route path="feedback" element={<AdminFeedback />} />
+        <Route path="tickets" element={<ServiceTickets />} />
+        <Route path="event-reports" element={<EventReports />} />
+        <Route path="waste-delays" element={<WasteDelays />} />
       </Route>
 
       {/* Staff portal */}
+      <Route path="/area" element={<AreaDashboard />} />
+      <Route path="/area/tickets" element={<ServiceTickets />} />
+      <Route path="/area/event-reports" element={<EventReports />} />
+      <Route path="/area/waste-delays" element={<WasteDelays />} />
+      <Route path="/caretaker" element={<CaretakerDashboard />} />
+      <Route path="/caretaker/waste" element={<CaretakerDashboard />} />
+      <Route path="/caretaker/tickets" element={<ServiceTickets />} />
+      <Route path="/coordinator" element={<CoordinatorDashboard />} />
+      <Route path="/coordinator/tickets" element={<ServiceTickets />} />
       <Route path="/staff" element={<StaffPortal />} />
 
       {/* Zero Waste Partner portal */}
@@ -89,6 +140,7 @@ export default function App() {
         <Route index element={<PartnerDashboard />} />
         <Route path="pickups" element={<PartnerPickups />} />
         <Route path="impact" element={<PartnerImpact />} />
+        <Route path="tickets" element={<ServiceTickets />} />
       </Route>
       </Routes>
     </Suspense>
